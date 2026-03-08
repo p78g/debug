@@ -1,54 +1,148 @@
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+-- FireServer for each particle accessory individually
+-- Copy-paste one at a time or run in sequence
+-- Shoulder = "Shoulder" (not Enum.Shoulders)
 
-local player = Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local root = character:WaitForChild("HumanoidRootPart")
+-- SPARKLES/FAIRY
+game:GetService("ReplicatedStorage"):WaitForChild("BloxbizRemotes"):WaitForChild("CatalogOnApplyToRealHumanoid"):FireServer({
+    {
+        AccessoryData = {
+            Order = 1,
+            AccessoryType = Enum.AccessoryType.Hat,
+            AssetId = 150381051  -- Spring Fairy
+        }
+    }
+})
 
-local orbiting = true
+game:GetService("ReplicatedStorage"):WaitForChild("BloxbizRemotes"):WaitForChild("CatalogOnApplyToRealHumanoid"):FireServer({
+    {
+        AccessoryData = {
+            Order = 1,
+            AccessoryType = Enum.AccessoryType.Hat,
+            AssetId = 141742418  -- Winter Fairy
+        }
+    }
+})
 
-local function getBloxyColas()
-    local parts = {}
-    for _, obj in pairs(workspace:GetDescendants()) do
-        if obj.Name == "BloxyCola" and obj:IsA("BasePart") then
-            table.insert(parts, obj)
-        end
-    end
-    return parts
-end
+game:GetService("ReplicatedStorage"):WaitForChild("BloxbizRemotes"):WaitForChild("CatalogOnApplyToRealHumanoid"):FireServer({
+    {
+        AccessoryData = {
+            Order = 1,
+            AccessoryType = Enum.AccessoryType.Back,
+            AssetId = 192557913  -- Sparkling Angel Wings
+        }
+    }
+})
 
-local bloxyColas = getBloxyColas()
+-- FIRE/FLAMES
+game:GetService("ReplicatedStorage"):WaitForChild("BloxbizRemotes"):WaitForChild("CatalogOnApplyToRealHumanoid"):FireServer({
+    {
+        AccessoryData = {
+            Order = 1,
+            AccessoryType = Enum.AccessoryType.Hat,
+            AssetId = 215718515  -- Fiery Horns of the Netherworld
+        }
+    }
+})
 
-local timePassed = 0
+game:GetService("ReplicatedStorage"):WaitForChild("BloxbizRemotes"):WaitForChild("CatalogOnApplyToRealHumanoid"):FireServer({
+    {
+        AccessoryData = {
+            Order = 1,
+            AccessoryType = Enum.AccessoryType.Hat,
+            AssetId = 191101707  -- Flaming Mohawk
+        }
+    }
+})
 
-RunService.Heartbeat:Connect(function(deltaTime)
-    if not orbiting then return end
+game:GetService("ReplicatedStorage"):WaitForChild("BloxbizRemotes"):WaitForChild("CatalogOnApplyToRealHumanoid"):FireServer({
+    {
+        AccessoryData = {
+            Order = 1,
+            AccessoryType = Enum.AccessoryType.Hat,
+            AssetId = 74891470  -- Frozen Horns
+        }
+    }
+})
 
-    timePassed = timePassed + deltaTime
+game:GetService("ReplicatedStorage"):WaitForChild("BloxbizRemotes"):WaitForChild("CatalogOnApplyToRealHumanoid"):FireServer({
+    {
+        AccessoryData = {
+            Order = 1,
+            AccessoryType = Enum.AccessoryType.Front,
+            AssetId = 3756389957  -- Cursed Flames
+        }
+    }
+})
 
-    for index, part in ipairs(bloxyColas) do
-        if not part or not part.Parent then continue end
+-- SMOKE/GLOW
+game:GetService("ReplicatedStorage"):WaitForChild("BloxbizRemotes"):WaitForChild("CatalogOnApplyToRealHumanoid"):FireServer({
+    {
+        AccessoryData = {
+            Order = 1,
+            AccessoryType = Enum.AccessoryType.Hair,
+            AssetId = 2316755277  -- Singed Scientist Hair
+        }
+    }
+})
 
-        local angle = timePassed * 1.5 + (index * 1.618)
-        
-        local x = math.cos(angle) * 8
-        local z = math.sin(angle) * 8
-        local y = math.sin(angle * 0.7) * 1.2
+game:GetService("ReplicatedStorage"):WaitForChild("BloxbizRemotes"):WaitForChild("CatalogOnApplyToRealHumanoid"):FireServer({
+    {
+        AccessoryData = {
+            Order = 1,
+            AccessoryType = Enum.AccessoryType.Back,
+            AssetId = 2413964589  -- Ghost Back Lantern
+        }
+    }
+})
 
-        local targetPos = root.Position + Vector3.new(x, y, z)
+-- SHOULDERS (using "Shoulder")
+game:GetService("ReplicatedStorage"):WaitForChild("BloxbizRemotes"):WaitForChild("CatalogOnApplyToRealHumanoid"):FireServer({
+    {
+        AccessoryData = {
+            Order = 1,
+            AccessoryType = Enum.AccessoryType.Shoulder,
+            AssetId = 183468963  -- Ghosdeeri (blue fire wings)
+        }
+    }
+})
 
-        pcall(function()
-            part.CFrame = part.CFrame:Lerp(
-                CFrame.new(targetPos) * CFrame.Angles(0, angle * 0.3, 0),
-                0.18
-            )
-        end)
-    end
-end)
+game:GetService("ReplicatedStorage"):WaitForChild("BloxbizRemotes"):WaitForChild("CatalogOnApplyToRealHumanoid"):FireServer({
+    {
+        AccessoryData = {
+            Order = 1,
+            AccessoryType = Enum.AccessoryType.Shoulder,
+            AssetId = 417456127  -- Golden Sparkling Wings (shoulder alt)
+        }
+    }
+})
 
-spawn(function()
-    while true do
-        task.wait(5)
-        bloxyColas = getBloxyColas()
-    end
-end)
+-- CLASSICS
+game:GetService("ReplicatedStorage"):WaitForChild("BloxbizRemotes"):WaitForChild("CatalogOnApplyToRealHumanoid"):FireServer({
+    {
+        AccessoryData = {
+            Order = 1,
+            AccessoryType = Enum.AccessoryType.Hat,
+            AssetId = 132809431  -- Doomsekkar
+        }
+    }
+})
+
+game:GetService("ReplicatedStorage"):WaitForChild("BloxbizRemotes"):WaitForChild("CatalogOnApplyToRealHumanoid"):FireServer({
+    {
+        AccessoryData = {
+            Order = 1,
+            AccessoryType = Enum.AccessoryType.Hat,
+            AssetId = 89171071  -- Boss White Hat
+        }
+    }
+})
+
+game:GetService("ReplicatedStorage"):WaitForChild("BloxbizRemotes"):WaitForChild("CatalogOnApplyToRealHumanoid"):FireServer({
+    {
+        AccessoryData = {
+            Order = 1,
+            AccessoryType = Enum.AccessoryType.Hat,
+            AssetId = 15316834620  -- Flaming Hot Chip Head
+        }
+    }
+})
