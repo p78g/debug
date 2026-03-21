@@ -1,8 +1,7 @@
--- Lightweight LocalScript - focus on scripts/remotes/touch/click/proximity - no deep scans
--- Should NOT lag or crash even in big games
+-- Slow, non-laggy scanner – processes hierarchy gradually with yields
+-- LocalScript – run via executor
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 local interestingClasses = {
@@ -13,122 +12,141 @@ local interestingClasses = {
     "ClickDetector", "ProximityPrompt"
 }
 
-local fastContainers = {
+-- Containers we care about (add/remove as needed – fewer = faster)
+local rootContainers = {
     game:GetService("ReplicatedStorage"),
-    LocalPlayer:WaitForChild("PlayerScripts", 5),
-    LocalPlayer:WaitForChild("PlayerGui", 5),
+    game:GetService("Workspace"),
     game:GetService("CoreGui"),
-    -- Add ReplicatedFirst or StarterGui if needed, but keep minimal
+    LocalPlayer:WaitForChild("PlayerGui", 10),
+    LocalPlayer:WaitForChild("PlayerScripts", 10),
+    -- game:GetService("StarterGui"), etc. – avoid if too heavy
 }
 
-local function getLightSnapshot()
-    local snap = {
-        objects = {},  -- "Class | Name | ParentName"
-        extraLoopsRough = 0  -- very basic counter of suspicious fast loops
-    }
+-- How many objects to process before yielding (higher = faster but more lag spikes)
+local BATCH_SIZE = 150     -- tune: 50–300; smaller = smoother but slower overall
 
-    for _, cont in ipairs(fastContainers) do
-        if not cont then continue end
+local function slowCollectInteresting(root, collectorTable, progressCallback)
+    local queue = {root}
+    local processed = 0
 
-        for _, obj in ipairs(cont:GetChildren()) do  -- shallow only!
-            if table.find(interestingClasses, obj.ClassName) then
-                local parentName = obj.Parent and obj.Parent.Name or "?"
-                local key = string.format("%s | %s | Parent: %s", obj.ClassName, obj.Name, parentName)
-                snap.objects[key] = (snap.objects[key] or 0) + 1
+    while #queue > 0 do
+        local current = table.remove(queue, 1)  -- FIFO (breadth-first)
+
+        -- Check current
+        if table.find(interestingClasses, current.ClassName) then
+            local parentPath = current.Parent and current.Parent:GetFullName() or "?"
+            local key = string.format("%s | %s | Parent: %s",
+                current.ClassName,
+                current.Name,
+                parentPath
+            )
+            collectorTable[key] = (collectorTable[key] or 0) + 1
+        end
+
+        -- Queue children
+        for _, child in ipairs(current:GetChildren()) do
+            table.insert(queue, child)
+        end
+
+        processed = processed + 1
+        if processed % BATCH_SIZE == 0 then
+            -- Yield to let Roblox breathe (adjust time: 0.01–0.08)
+            task.wait(0.03)
+            if progressCallback then
+                progressCallback(processed)
             end
         end
     end
+end
 
-    -- Super rough extra loop detection: count how many fast connections we can see
-    -- (won't catch hidden ones, but spikes can hint at cheats)
-    if getconnections then
-        local hb = #getconnections(RunService.Heartbeat)
-        local rs = #getconnections(RunService.RenderStepped)
-        snap.extraLoopsRough = hb + rs
+local function getSlowSnapshot()
+    local snap = { objects = {} }
+    local totalProcessed = 0
+
+    print("[SLOW SCAN] Starting – this will take a while but should not freeze...")
+
+    for _, root in ipairs(rootContainers) do
+        if not root then continue end
+
+        print("[SLOW SCAN] Scanning: " .. root:GetFullName())
+
+        slowCollectInteresting(root, snap.objects, function(count)
+            totalProcessed = totalProcessed + count
+            if totalProcessed % 2000 == 0 then
+                print("   ... processed ~" .. totalProcessed .. " objects so far")
+            end
+        end)
     end
 
+    print("[SLOW SCAN] Finished – total processed ≈ " .. totalProcessed)
     return snap
 end
 
-print("[LIGHT SCAN] BEFORE snapshot (fast & shallow)...")
-local before = getLightSnapshot()
-print("[LIGHT SCAN] BEFORE done")
+-- ────────────────────────────────────────────
+print("Creating BEFORE snapshot (slow mode)...")
+local before = getSlowSnapshot()
 
--- Run the loadstring
 print("[EXEC] Running loadstring...")
-local ok, err = pcall(function()
+local success, err = pcall(function()
     loadstring(game:HttpGet("https://init.frostbyte.lol", true))()
 end)
-if not ok then
-    warn("[EXEC FAIL] " .. tostring(err))
+if not success then
+    warn("[EXEC ERROR] " .. tostring(err))
 end
 
-print("[WAIT] Waiting 20 seconds (many loaders delay GUI/hooks)...")
+print("[WAIT] Giving payload ~20 seconds to do stuff...")
 task.wait(20)
 
-print("[LIGHT SCAN] AFTER snapshot...")
-local after = getLightSnapshot()
-print("[LIGHT SCAN] AFTER done")
+print("Creating AFTER snapshot (slow mode again)...")
+local after = getSlowSnapshot()
 
--- Build simple report
+-- ────────────────────────────────────────────
+-- Simple diff & report
 local report = {}
-table.insert(report, "Light Anticheat-Relevant Diff Report")
+table.insert(report, "Slow Anticheat-Relevant Diff Report")
 table.insert(report, os.date("%Y-%m-%d %H:%M:%S"))
 table.insert(report, "──────────────────────────────────")
 table.insert(report, "")
 
-local changes = false
+local changesFound = false
 
-table.insert(report, "CHANGES IN SCRIPTS / REMOTES / TOUCH / CLICK / PROXIMITY:")
-for key, bCount in pairs(before.objects) do
-    local aCount = after.objects[key] or 0
-    if aCount > bCount then
-        table.insert(report, "   + " .. key .. " (+" .. (aCount - bCount) .. ")")
-        changes = true
-    elseif aCount < bCount then
-        table.insert(report, "   − " .. key .. " (-" .. (bCount - aCount) .. ")")
-        changes = true
-    end
-end
-for key, aCount in pairs(after.objects) do
-    if not before.objects[key] then
-        table.insert(report, "   + NEW: " .. key)
-        changes = true
-    end
-end
-if not changes then
-    table.insert(report, "   (No changes found - most likely hidden or no new Instances)")
-end
-table.insert(report, "")
+table.insert(report, "CHANGES (new / removed interesting objects):")
+local allKeys = {}
+for k in pairs(before.objects) do allKeys[k] = true end
+for k in pairs(after.objects) do allKeys[k] = true end
 
-if getconnections then
-    local beforeLoops = before.extraLoopsRough
-    local afterLoops = after.extraLoopsRough
-    table.insert(report, "Rough loop connections change:")
-    if afterLoops > beforeLoops + 5 then
-        table.insert(report, "   + Suspicious spike (+" .. (afterLoops - beforeLoops) .. ")")
-    elseif afterLoops < beforeLoops then
-        table.insert(report, "   − Dropped (" .. (beforeLoops - afterLoops) .. ")")
-    else
-        table.insert(report, "   (Stable)")
+for key in pairs(allKeys) do
+    local b = before.objects[key] or 0
+    local a = after.objects[key] or 0
+    if a > b then
+        table.insert(report, string.format("   + %s  (was %d → now %d)", key, b, a))
+        changesFound = true
+    elseif a < b then
+        table.insert(report, string.format("   − %s  (was %d → now %d)", key, b, a))
+        changesFound = true
     end
-else
-    table.insert(report, "Note: getconnections not available in your exploit → no loop check")
+end
+
+if not changesFound then
+    table.insert(report, "   (No changes detected in scanned classes/locations)")
 end
 
 table.insert(report, "")
-table.insert(report, "This is VERY limited (shallow scan only). Modern cheats rarely add visible Instances/remotes.")
-table.insert(report, "If still nothing shows → payload uses memory-only hooks / existing remotes / metatables.")
+table.insert(report, "Notes:")
+table.insert(report, "• Scan is VERY slow on purpose to avoid freezing/crashes")
+table.insert(report, "• Only shallow-ish interesting classes checked")
+table.insert(report, "• Many modern exploits don't create new visible Instances → expect empty diff")
+table.insert(report, "• Tune BATCH_SIZE or task.wait time if still issues")
 
--- Save
-local filename = "LightAnticheatDiff.txt"
-local success = pcall(writefile, filename, table.concat(report, "\n"))
+-- Save report
+local filename = "SlowAnticheatDiff.txt"
+local ok = pcall(writefile, filename, table.concat(report, "\n"))
 
-if success then
-    print("[SAVED] → " .. filename .. " (check exploit files tab)")
+if ok then
+    print("[SAVED] Report saved to: " .. filename .. " (check files tab)")
 else
-    warn("[SAVE FAIL] Dumping to console:")
+    warn("[SAVE ERROR] – dumping to console:")
     for _, line in ipairs(report) do print(line) end
 end
 
-print("Done - should be lag-free now.")
+print("All done.")
