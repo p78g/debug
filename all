@@ -1,4 +1,112 @@
--- Improved RakNet Desync + Dual Visualizer (Client blue vs Server red/white)
+-- Minimal RakNet Desync Toggle
+-- Q = Toggle ON/OFF
+-- X = Force disable + reset
+-- Requires executor with RakNet library exposed (Delta, etc.)
+
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- Try to find the RakNet table (common names in 2026 executors)
+local raknet = rawget(_G, "Raknet") 
+             or rawget(_G, "raknet") 
+             or rawget(_G, "rnet") 
+             or rawget(_G, "RakNet") 
+             or rawget(_G, "pls raknet")  -- some weird variants
+
+local desyncEnabled = false
+local hookId = nil  -- for hook-based versions
+
+local function enableDesync()
+    if desyncEnabled then return end
+    desyncEnabled = true
+
+    if not raknet then
+        warn("[Desync] No RakNet library detected in _G → cannot enable real desync")
+        return
+    end
+
+    -- Try most common methods first
+    if raknet.desync then
+        raknet.desync(true)
+        print("[Desync] Enabled via raknet.desync(true)")
+    elseif raknet.enable then
+        raknet.enable()
+        print("[Desync] Enabled via raknet.enable()")
+    elseif type(raknet) == "function" then
+        -- Some expose raknet as the toggle function directly
+        raknet(true)
+        print("[Desync] Enabled via raknet(true)")
+    elseif raknet.add_send_hook then
+        -- Hook outgoing packets and block replication/physics ones (very basic filter)
+        hookId = raknet.add_send_hook(function(packetData)
+            -- Naive: drop anything that looks like position/physics replication
+            -- Real filters check opcodes/channels – this is placeholder
+            if typeof(packetData) == "string" and (packetData:find("Physics") or packetData:find("Replicate") or packetData:find("CFrame")) then
+                return false  -- block send
+            end
+            return true
+        end)
+        print("[Desync] Enabled via send_hook (basic replication block)")
+    else
+        warn("[Desync] No supported RakNet method found. Print your raknet table:")
+        for k, v in pairs(raknet) do
+            print("  raknet." .. tostring(k))
+        end
+    end
+
+    print("[Desync] → ON (your character should appear frozen/laggy/invisible on server)")
+end
+
+local function disableDesync()
+    if not desyncEnabled then return end
+    desyncEnabled = false
+
+    if raknet then
+        if raknet.desync then
+            raknet.desync(false)
+        elseif raknet.disable then
+            raknet.disable()
+        elseif type(raknet) == "function" then
+            raknet(false)
+        elseif hookId and raknet.remove_send_hook then
+            raknet.remove_send_hook(hookId)
+            hookId = nil
+        end
+    end
+
+    print("[Desync] → OFF")
+end
+
+-- Toggle with Q
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+
+    if input.KeyCode == Enum.KeyCode.Q then
+        if desyncEnabled then
+            disableDesync()
+        else
+            enableDesync()
+        end
+    elseif input.KeyCode == Enum.KeyCode.X then
+        disableDesync()
+        hookId = nil
+        print("[Desync] Killed / fully reset")
+        -- Optional: print raknet debug on kill
+        if raknet then
+            print("RakNet debug dump:")
+            for k, v in pairs(raknet) do
+                print("  " .. tostring(k) .. " → " .. tostring(v))
+            end
+        end
+    end
+end)
+
+print("[Minimal RakNet Desync] Loaded")
+print("   Q → Toggle desync")
+print("   X → Force disable + reset")
+print("Watch executor console for activation messages / errors.")
+print("If nothing happens → your executor likely doesn't expose RakNet properly.")-- Improved RakNet Desync + Dual Visualizer (Client blue vs Server red/white)
 -- Toggle: Q   |   Kill/Reset + Debug: X
 -- Watch console for errors / status
 
