@@ -1,293 +1,76 @@
--- Minimal RakNet Desync Toggle
--- Q = Toggle ON/OFF
--- X = Force disable + reset
--- Requires executor with RakNet library exposed (Delta, etc.)
+local ReGui = loadstring(game:HttpGet("https://api.lithium.wtf/misc/regui"))()
+local Window = ReGui:Window({
+    Title = "RakNet Desync (Stable-ish)",
+    Size = UDim2.fromOffset(220, 180),
+})
 
-local UserInputService = game:GetService("UserInputService")
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-
--- Try to find the RakNet table (common names in 2026 executors)
-local raknet = rawget(_G, "Raknet") 
-             or rawget(_G, "raknet") 
-             or rawget(_G, "rnet") 
-             or rawget(_G, "RakNet") 
-             or rawget(_G, "pls raknet")  -- some weird variants
-
-local desyncEnabled = false
-local hookId = nil  -- for hook-based versions
-
-local function enableDesync()
-    if desyncEnabled then return end
-    desyncEnabled = true
-
-    if not raknet then
-        warn("[Desync] No RakNet library detected in _G → cannot enable real desync")
-        return
-    end
-
-    -- Try most common methods first
-    if raknet.desync then
-        raknet.desync(true)
-        print("[Desync] Enabled via raknet.desync(true)")
-    elseif raknet.enable then
-        raknet.enable()
-        print("[Desync] Enabled via raknet.enable()")
-    elseif type(raknet) == "function" then
-        -- Some expose raknet as the toggle function directly
-        raknet(true)
-        print("[Desync] Enabled via raknet(true)")
-    elseif raknet.add_send_hook then
-        -- Hook outgoing packets and block replication/physics ones (very basic filter)
-        hookId = raknet.add_send_hook(function(packetData)
-            -- Naive: drop anything that looks like position/physics replication
-            -- Real filters check opcodes/channels – this is placeholder
-            if typeof(packetData) == "string" and (packetData:find("Physics") or packetData:find("Replicate") or packetData:find("CFrame")) then
-                return false  -- block send
-            end
-            return true
-        end)
-        print("[Desync] Enabled via send_hook (basic replication block)")
-    else
-        warn("[Desync] No supported RakNet method found. Print your raknet table:")
-        for k, v in pairs(raknet) do
-            print("  raknet." .. tostring(k))
-        end
-    end
-
-    print("[Desync] → ON (your character should appear frozen/laggy/invisible on server)")
+local plsraknet = Raknet or raknet or rnet
+if not plsraknet then
+    local Popup = Window:PopupModal({ Title = "Error" })
+    Popup:Label({ Text = "No RakNet library detected!" })
+    Popup:Separator()
+    Popup:Button({
+        Text = "Close",
+        Callback = function() Popup:ClosePopup() end,
+    })
+    return  -- stop script
 end
 
-local function disableDesync()
-    if not desyncEnabled then return end
-    desyncEnabled = false
-
-    if raknet then
-        if raknet.desync then
-            raknet.desync(false)
-        elseif raknet.disable then
-            raknet.disable()
-        elseif type(raknet) == "function" then
-            raknet(false)
-        elseif hookId and raknet.remove_send_hook then
-            raknet.remove_send_hook(hookId)
-            hookId = nil
-        end
-    end
-
-    print("[Desync] → OFF")
-end
-
--- Toggle with Q
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-
-    if input.KeyCode == Enum.KeyCode.Q then
-        if desyncEnabled then
-            disableDesync()
-        else
-            enableDesync()
-        end
-    elseif input.KeyCode == Enum.KeyCode.X then
-        disableDesync()
-        hookId = nil
-        print("[Desync] Killed / fully reset")
-        -- Optional: print raknet debug on kill
-        if raknet then
-            print("RakNet debug dump:")
-            for k, v in pairs(raknet) do
-                print("  " .. tostring(k) .. " → " .. tostring(v))
-            end
-        end
-    end
-end)
-
-print("[Minimal RakNet Desync] Loaded")
-print("   Q → Toggle desync")
-print("   X → Force disable + reset")
-print("Watch executor console for activation messages / errors.")
-print("If nothing happens → your executor likely doesn't expose RakNet properly.")-- Improved RakNet Desync + Dual Visualizer (Client blue vs Server red/white)
--- Toggle: Q   |   Kill/Reset + Debug: X
--- Watch console for errors / status
-
-local UserInputService = game:GetService("UserInputService")
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local LocalPlayer = Players.LocalPlayer
-
-local raknet = rawget(_G, "Raknet") or rawget(_G, "raknet") or rawget(_G, "rnet")  -- try common names
+Window:Label({ Text = "Warning: Long desync often causes reconnects/kicks" })
 
 local desyncActive = false
-local clientViz, serverViz, clientHighlight, serverHighlight
-local lastServerCFrame = CFrame.new()
-local lastVelocity = Vector3.new()
+local maxDuration = 8  -- seconds before auto-disable (change this)
+local durationSlider = Window:Slider({
+    Label = "Max desync duration (sec)",
+    Min = 3,
+    Max = 30,
+    Default = maxDuration,
+    Callback = function(Value)
+        maxDuration = Value
+    end,
+})
 
--- ────────────────────────────────────────────
-local function createVisualizers()
-    local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then
-        warn("[Viz] No character / HRP yet - retry after spawn")
-        return
-    end
+local statusLabel = Window:Label({ Text = "Status: OFF" })
 
-    -- Clean old
-    if clientViz then clientViz:Destroy() end
-    if serverViz then serverViz:Destroy() end
-    if clientHighlight then clientHighlight:Destroy() end
-    if serverHighlight then serverHighlight:Destroy() end
-
-    -- Client viz (blue - where YOU see yourself)
-    clientViz = Instance.new("Part")
-    clientViz.Name = "ClientPosViz"
-    clientViz.Size = char.HumanoidRootPart.Size + Vector3.new(0.4, 0.4, 0.4)
-    clientViz.Transparency = 0.6
-    clientViz.Color = Color3.fromRGB(0, 100, 255)  -- blue fill
-    clientViz.CanCollide = false
-    clientViz.Anchored = true
-    clientViz.Parent = workspace
-
-    clientHighlight = Instance.new("Highlight")
-    clientHighlight.FillColor = Color3.fromRGB(0, 100, 255)
-    clientHighlight.OutlineColor = Color3.fromRGB(200, 200, 255)
-    clientHighlight.FillTransparency = 0.5
-    clientHighlight.OutlineTransparency = 0
-    clientHighlight.Adornee = clientViz
-    clientHighlight.Parent = game:GetService("CoreGui")  -- try CoreGui for visibility
-
-    -- Server viz (red fill + white outline)
-    serverViz = Instance.new("Part")
-    serverViz.Name = "ServerPosViz"
-    serverViz.Size = clientViz.Size
-    serverViz.Transparency = 0.4
-    serverViz.Color = Color3.fromRGB(255, 0, 0)  -- red fill
-    serverViz.CanCollide = false
-    serverViz.Anchored = true
-    serverViz.Parent = workspace
-
-    serverHighlight = Instance.new("Highlight")
-    serverHighlight.FillColor = Color3.fromRGB(255, 0, 0)
-    serverHighlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-    serverHighlight.FillTransparency = 0.35
-    serverHighlight.OutlineTransparency = 0
-    serverHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    serverHighlight.Adornee = serverViz
-    serverHighlight.Parent = game:GetService("CoreGui")
-
-    print("[Viz] Visualizers created - blue = your local pos, red/white = server pos")
+local function updateStatus()
+    statusLabel:SetText("Status: " .. (desyncActive and "ON (auto-off in ~" .. maxDuration .. "s)" or "OFF"))
 end
 
--- Update loop
-local updateConn
-local function startUpdateLoop()
-    if updateConn then updateConn:Disconnect() end
-    updateConn = RunService.Heartbeat:Connect(function(dt)
-        local char = LocalPlayer.Character
-        if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-
-        local hrp = char.HumanoidRootPart
-
-        -- Client viz always follows real local position
-        if clientViz then
-            clientViz.CFrame = hrp.CFrame
+local checkbox = Window:Checkbox({
+    Value = false,
+    Label = "Enable Desync",
+    Callback = function(self, Value: boolean)
+        if not plsraknet.desync then
+            warn("plsraknet.desync function missing!")
+            self:SetValue(false)
+            return
         end
 
-        -- Server viz: fallback prediction (last known + velocity * estimated lag)
-        -- Not perfect, but better than nothing without packet reading
-        if serverViz and desyncActive then
-            lastVelocity = hrp.AssemblyLinearVelocity
-            lastServerCFrame = lastServerCFrame + lastVelocity * dt  -- crude extrapolation
-            serverViz.CFrame = lastServerCFrame
-        end
-    end)
-end
+        plsraknet.desync(Value)
+        desyncActive = Value
 
--- ────────────────────────────────────────────
-local hookId = nil
+        updateStatus()
 
-local function toggleDesync()
-    local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then
-        warn("[Desync] No character loaded - wait and try again")
-        return
-    end
-
-    desyncActive = not desyncActive
-
-    if desyncActive then
-        lastServerCFrame = char.HumanoidRootPart.CFrame  -- baseline
-        createVisualizers()
-        startUpdateLoop()
-
-        if not raknet then
-            warn("[Desync] No Raknet/rnet found in _G - visualizer only (no real desync)")
+        if Value then
+            print("[Desync] Enabled – will auto-disable in " .. maxDuration .. " seconds")
+            task.delay(maxDuration, function()
+                if desyncActive then
+                    plsraknet.desync(false)
+                    desyncActive = false
+                    checkbox:SetValue(false)
+                    updateStatus()
+                    print("[Desync] Auto-disabled to prevent reconnect")
+                end
+            end)
         else
-            -- Try common 2026 APIs
-            if raknet.desync then
-                raknet.desync(true)
-                print("[Desync] Activated via raknet.desync(true)")
-            elseif raknet.enable then
-                raknet.enable()  -- some use this
-                print("[Desync] Activated via raknet.enable()")
-            elseif raknet.startcapture then  -- Celery style
-                raknet.startcapture()
-                print("[Desync] Capture started (may need manual packet drop)")
-            else
-                warn("[Desync] Unknown Raknet API - check executor docs or print(raknet)")
-            end
+            print("[Desync] Disabled manually")
         end
-    else
-        if raknet then
-            if raknet.desync then raknet.desync(false) end
-            if raknet.disable then raknet.disable() end
-            if raknet.stopcapture then raknet.stopcapture() end
-        end
-        if updateConn then updateConn:Disconnect() end
-        print("[Desync] Disabled")
-    end
-end
+    end,
+})
 
-local function killEverything()
-    desyncActive = false
-    if updateConn then updateConn:Disconnect() end
-    if clientViz then clientViz:Destroy() end
-    if serverViz then serverViz:Destroy() end
-    if clientHighlight then clientHighlight:Destroy() end
-    if serverHighlight then serverHighlight:Destroy() end
-    lastServerCFrame = CFrame.new()
-    lastVelocity = Vector3.new()
-    print("[Kill] Everything reset. Check console for Raknet status:")
-    if raknet then
-        for k,v in pairs(raknet) do
-            print("   raknet." .. tostring(k) .. " = " .. tostring(v))
-        end
-    else
-        print("   No raknet table found")
-    end
-end
-
--- ────────────────────────────────────────────
-UserInputService.InputBegan:Connect(function(input, processed)
-    if processed then return end
-    if input.KeyCode == Enum.KeyCode.Q then
-        toggleDesync()
-    elseif input.KeyCode == Enum.KeyCode.X then
-        killEverything()
+-- Optional: force off on script end / character respawn
+game:BindToClose(function()
+    if desyncActive and plsraknet.desync then
+        plsraknet.desync(false)
     end
 end)
-
--- Auto-baseline when not desynced
-RunService.Heartbeat:Connect(function()
-    if not desyncActive then
-        local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            lastServerCFrame = hrp.CFrame
-        end
-    end
-end)
-
-print("[Desync Visualizer v2] Loaded")
-print("Q = Toggle desync + show visualizers")
-print("X = Kill everything + dump Raknet debug info")
-print("Blue transparent = your local/client position")
-print("Red fill + white outline = estimated server position")
-print("If nothing shows: check character loaded? Executor console for warnings?")
