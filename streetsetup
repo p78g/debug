@@ -1,0 +1,71 @@
+--[[
+    Automated Script with Cooldowns
+    Steps:
+    1. Withdraw 5050 from ATM
+    2. Respawn
+    3. Teleport to Gun Store (1053, 54, -104)
+    4. Fire proximity prompt (instant)
+    5. Teleport back to original position
+    6. Buy SkiMask
+    7. Equip Mask
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+
+-- Wait for required remotes
+local ATM = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ATM")
+local ControllerRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ControllerRemote")
+local BuyRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Buy")
+local MaskRemote = Character:WaitForChild("MASKED"):WaitForChild("RemoteEvent")
+
+-- Proximity prompt location
+local ProximityPrompt = workspace:WaitForChild("Map"):WaitForChild("GunStore"):WaitForChild("GunTable"):WaitForChild("ProPad"):WaitForChild("Handle"):WaitForChild("ProximityPrompt")
+
+-- Store original position
+local originalPosition = HumanoidRootPart.Position
+
+-- Helper function to teleport character
+local function TeleportTo(x, y, z)
+    local rootPart = Character:WaitForChild("HumanoidRootPart")
+    rootPart.CFrame = CFrame.new(x, y, z)
+    task.wait() -- let physics settle
+end
+
+-- Helper function to wait between steps
+local function Cooldown()
+    task.wait(0.2)
+end
+
+-- Step 1: Withdraw 5050
+ATM:FireServer("Withdraw", 5050)
+Cooldown()
+
+-- Step 2: Respawn
+ControllerRemote:FireServer("/respawn")
+Cooldown()
+
+-- Step 3: Teleport to Gun Store
+TeleportTo(1053, 54, -104)
+Cooldown()
+
+-- Step 4: Fire proximity prompt (instantly, no extra delay)
+ProximityPrompt:InputHoldBegin()
+-- Immediately after firing, wait the cooldown for next step
+Cooldown()
+
+-- Step 5: Teleport back to original position
+TeleportTo(originalPosition.X, originalPosition.Y, originalPosition.Z)
+Cooldown()
+
+-- Step 6: Buy SkiMask (50)
+BuyRemote:FireServer("SkiMask", 50)
+Cooldown()
+
+-- Step 7: Equip Mask
+MaskRemote:FireServer("Equip")
+
+print("All steps completed.")
