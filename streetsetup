@@ -56,7 +56,7 @@ print("New character loaded, teleporting to Gun Store")
 
 -- Teleport to Gun Store (CFrame)
 rootPart.CFrame = CFrame.new(1053, 54, -104)
-Wait(0.3)
+Wait(0.5)
 
 -- Step 4: Fire proximity prompt
 print("Step 4: Firing proximity prompt")
