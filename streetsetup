@@ -71,7 +71,7 @@ local ok, err = pcall(prompt.Prompt, prompt)
 if not ok then
     pcall(function()
         prompt:InputHoldBegin()
-        Wait(0.15)
+        Wait(0.5)
         prompt:InputHoldEnd()
     end)
 end
