@@ -1,12 +1,12 @@
 --[[
-    Automated Script with Robust Error Handling
+    Full Automation Script
     Steps:
     1. Withdraw 5050 from ATM
     2. Respawn
     3. Teleport to Gun Store (1053, 54, -104)
-    4. Fire proximity prompt (using :Prompt())
+    4. Fire proximity prompt
     5. Teleport back to original position
-    6. Buy SkiMask
+    6. Buy SkiMask (50)
     7. Equip Mask
 ]]
 
@@ -14,129 +14,107 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 
--- Helper: wait with cooldown
+-- Helper: wait with print
 local function Cooldown(seconds)
     task.wait(seconds or 0.2)
 end
 
--- Helper: safe teleport with retry
+-- Helper: wait for character and essential parts
+local function GetCharacter()
+    local character = LocalPlayer.Character
+    if not character or not character.Parent then
+        character = LocalPlayer.CharacterAdded:Wait()
+    end
+    local rootPart = character:WaitForChild("HumanoidRootPart", 10)
+    local humanoid = character:WaitForChild("Humanoid", 10)
+    return character, rootPart, humanoid
+end
+
+-- Helper: safe teleport
 local function TeleportTo(character, x, y, z)
     local rootPart = character and character:FindFirstChild("HumanoidRootPart")
     if rootPart then
         rootPart.CFrame = CFrame.new(x, y, z)
-        task.wait() -- let physics settle
+        Cooldown(0.1) -- let physics settle
         return true
     end
     return false
 end
 
--- Helper: wait for character and ensure it's loaded
-local function WaitForCharacter()
-    local character = LocalPlayer.Character
-    if not character or not character.Parent then
-        character = LocalPlayer.CharacterAdded:Wait()
-    end
-    -- Wait for essential parts
-    local humanoidRootPart = character:WaitForChild("HumanoidRootPart", 5)
-    local humanoid = character:WaitForChild("Humanoid", 5)
-    return character, humanoidRootPart, humanoid
-end
-
 -- Get initial character
-local character, rootPart, humanoid = WaitForCharacter()
-if not character then
-    error("Failed to load character")
-end
+local character, rootPart, humanoid = GetCharacter()
+if not character then error("Character not loaded") end
+local originalPosition = rootPart.Position
+print("Original position:", originalPosition)
 
--- Store original position
-local originalPos = rootPart.Position
-
--- Wait for remotes (with timeout and print)
-local function WaitForRemote(path)
-    local remote = ReplicatedStorage:FindFirstChild("Remotes")
-    if not remote then
-        remote = ReplicatedStorage:WaitForChild("Remotes", 5)
-    end
-    for _, childName in ipairs(path) do
-        remote = remote:WaitForChild(childName, 5)
-        if not remote then error("Remote not found: " .. childName) end
-    end
-    return remote
-end
-
--- Load remotes
-local ATM = WaitForRemote({"ATM"})
-local ControllerRemote = WaitForRemote({"ControllerRemote"})
-local BuyRemote = WaitForRemote({"Buy"})
-
--- Proximity prompt (will be fetched just before use to ensure it exists)
-local function GetProximityPrompt()
-    return workspace:WaitForChild("Map", 5):WaitForChild("GunStore", 5):WaitForChild("GunTable", 5):WaitForChild("ProPad", 5):WaitForChild("Handle", 5):WaitForChild("ProximityPrompt", 5)
-end
+-- Wait for remotes
+local Remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+local ATM = Remotes:WaitForChild("ATM", 10)
+local ControllerRemote = Remotes:WaitForChild("ControllerRemote", 10)
+local BuyRemote = Remotes:WaitForChild("Buy", 10)
 
 -- Step 1: Withdraw
-print("[1] Withdrawing 5050...")
+print("Step 1: Withdrawing 5050...")
 ATM:FireServer("Withdraw", 5050)
 Cooldown()
 
 -- Step 2: Respawn
-print("[2] Respawning...")
+print("Step 2: Respawning...")
 ControllerRemote:FireServer("/respawn")
-Cooldown(1) -- Wait a bit for respawn to happen
+Cooldown(1) -- wait for respawn to start
 
--- Wait for new character
+-- Wait for new character after respawn
 print("Waiting for new character...")
-character, rootPart, humanoid = WaitForCharacter()
+character, rootPart, humanoid = GetCharacter()
 print("New character loaded")
 
--- Re-fetch MaskRemote (it's in the new character's MASKED folder)
-local MaskRemote = nil
-local maskedFolder = character:WaitForChild("MASKED", 5)
-if maskedFolder then
-    MaskRemote = maskedFolder:WaitForChild("RemoteEvent", 5)
+-- Get MaskRemote from the new character
+local maskedFolder = character:WaitForChild("MASKED", 10)
+local MaskRemote = maskedFolder and maskedFolder:WaitForChild("RemoteEvent", 10)
+if not MaskRemote then
+    warn("MaskRemote not found! Step 7 may fail.")
 end
 
 -- Step 3: Teleport to Gun Store
-print("[3] Teleporting to Gun Store...")
-if not TeleportTo(character, 1053, 54, -104) then
-    warn("Failed to teleport to Gun Store")
-end
+print("Step 3: Teleporting to (1053, 54, -104)...")
+TeleportTo(character, 1053, 54, -104)
 Cooldown()
 
 -- Step 4: Fire proximity prompt
-print("[4] Firing proximity prompt...")
-local prompt = GetProximityPrompt()
-if prompt then
-    -- Use :Prompt() to simulate interaction
+print("Step 4: Firing proximity prompt...")
+local promptPath = workspace:WaitForChild("Map", 10):WaitForChild("GunStore", 10):WaitForChild("GunTable", 10):WaitForChild("ProPad", 10):WaitForChild("Handle", 10):WaitForChild("ProximityPrompt", 10)
+if promptPath then
+    -- Use Prompt() to simulate interaction
     local success, err = pcall(function()
-        prompt:Prompt()
+        promptPath:Prompt()
     end)
-    if not success then
-        warn("Failed to fire prompt: " .. tostring(err))
+    if success then
+        print("Prompt fired successfully")
+    else
+        warn("Failed to fire prompt:", err)
     end
 else
-    warn("Proximity prompt not found")
+    warn("ProximityPrompt not found in workspace")
 end
 Cooldown()
 
--- Step 5: Teleport back
-print("[5] Returning to original position...")
-if not TeleportTo(character, originalPos.X, originalPos.Y, originalPos.Z) then
-    warn("Failed to teleport back")
-end
+-- Step 5: Teleport back to original position
+print("Step 5: Returning to original position...")
+TeleportTo(character, originalPosition.X, originalPosition.Y, originalPosition.Z)
 Cooldown()
 
 -- Step 6: Buy SkiMask
-print("[6] Buying SkiMask...")
+print("Step 6: Buying SkiMask (50)...")
 BuyRemote:FireServer("SkiMask", 50)
 Cooldown()
 
 -- Step 7: Equip Mask
-print("[7] Equipping mask...")
+print("Step 7: Equipping mask...")
 if MaskRemote then
     MaskRemote:FireServer("Equip")
+    print("Equip fired")
 else
-    warn("MaskRemote not found – skipping equip")
+    warn("MaskRemote missing – skipping equip")
 end
 
-print("All steps completed.")
+print("All steps completed!")
