@@ -1,68 +1,70 @@
 --[[
-    Simple Automation Script (with improved prompt firing)
+    Robust Automation Script
     Steps:
     1. Withdraw 5050
-    2. Respawn (0.6s wait)
-    3. Teleport to Gun Store (CFrame)
-    4. Fire proximity prompt (robust)
-    5. Teleport back to original position
+    2. Respawn
+    3. Teleport to Gun Store
+    4. Fire ProximityPrompt (reliably)
+    5. Teleport back
     6. Buy SkiMask (50)
-    7. Equip Mask (fire remote directly)
+    7. Equip mask
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 
--- Helper: wait with custom delay
+-- Helper: wait with delay
 local function Wait(delay)
-    task.wait(delay)
+    task.wait(delay or 0.3)
 end
 
--- Helper: wait for character and return its HumanoidRootPart
+-- Helper: get character and humanoid root part
 local function GetCharacter()
-    local character = LocalPlayer.Character
-    if not character or not character.Parent then
-        character = LocalPlayer.CharacterAdded:Wait()
+    local char = LocalPlayer.Character
+    if not char or not char.Parent then
+        char = LocalPlayer.CharacterAdded:Wait()
     end
-    local rootPart = character:WaitForChild("HumanoidRootPart", 10)
-    return character, rootPart
+    local rootPart = char:WaitForChild("HumanoidRootPart", 10)
+    return char, rootPart
 end
 
--- Step 0: Save original position BEFORE any changes
-local character, rootPart = GetCharacter()
-local originalPosition = rootPart.Position
-print("Original position saved:", originalPosition)
+-- Save original position before respawn
+local char, rootPart = GetCharacter()
+local originalPos = rootPart.Position
+print("Original position saved:", originalPos)
 
--- Wait for remotes
-local Remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
-local ATM = Remotes:WaitForChild("ATM", 10)
-local ControllerRemote = Remotes:WaitForChild("ControllerRemote", 10)
-local BuyRemote = Remotes:WaitForChild("Buy", 10)
+-- Get remote references
+local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+local ATM = remotes:WaitForChild("ATM", 10)
+local ControllerRemote = remotes:WaitForChild("ControllerRemote", 10)
+local BuyRemote = remotes:WaitForChild("Buy", 10)
 
 -- Step 1: Withdraw
-print("Step 1: Withdraw 5050")
+print("Step 1: Withdrawing 5050")
 ATM:FireServer("Withdraw", 5050)
 Wait(0.3)
 
 -- Step 2: Respawn
-print("Step 2: Respawn")
+print("Step 2: Respawning")
 ControllerRemote:FireServer("/respawn")
-Wait(1)  -- extra time for respawn to complete
+Wait(1.5) -- extra time for respawn to complete
 
 -- Step 3: Get new character after respawn
-print("Waiting for new character...")
-character, rootPart = GetCharacter()
-print("New character loaded, teleporting to Gun Store")
+print("Step 3: Getting new character after respawn")
+char, rootPart = GetCharacter()
+print("New character loaded")
 
--- Teleport to Gun Store (CFrame)
-rootPart.CFrame = CFrame.new(1053, 54, -104)
-Wait(0.5)
+-- Step 4: Teleport to Gun Store
+local gunStorePos = Vector3.new(1053, 54, -104)
+print("Step 4: Teleporting to Gun Store", gunStorePos)
+rootPart.CFrame = CFrame.new(gunStorePos)
+Wait(0.5) -- allow teleport to settle
 
--- Step 4: Fire proximity prompt (robust version)
-print("Step 4: Firing proximity prompt")
+-- Step 5: Fire proximity prompt
+print("Step 5: Attempting to fire ProximityPrompt")
 
--- Get the Handle part and its prompt
+-- Get the prompt and its handle
 local map = workspace:WaitForChild("Map", 10)
 local gunStore = map:WaitForChild("GunStore", 10)
 local gunTable = gunStore:WaitForChild("GunTable", 10)
@@ -72,61 +74,65 @@ local prompt = handle:WaitForChild("ProximityPrompt", 10)
 
 -- Move exactly onto the handle to ensure proximity
 local handlePos = handle.Position
-rootPart.CFrame = CFrame.new(handlePos.X, handlePos.Y + 2, handlePos.Z)  -- stand on the handle
+rootPart.CFrame = CFrame.new(handlePos.X, handlePos.Y + 2, handlePos.Z)
 Wait(0.2)
 
--- Try multiple methods to activate the prompt
-local activated = false
-
--- Method 1: Use Prompt()
+-- Fire the prompt (method 1)
+local promptFired = false
 local success, err = pcall(function()
     prompt:Prompt()
 end)
 if success then
     print("Prompt fired via Prompt()")
-    activated = true
+    promptFired = true
 else
     warn("Prompt() failed:", err)
-end
-
--- Method 2: Simulate input hold if first failed
-if not activated then
+    -- Fallback: simulate input hold
     pcall(function()
         prompt:InputHoldBegin()
-        Wait(0.1)
+        Wait(0.15)
         prompt:InputHoldEnd()
         print("Prompt fired via InputHold")
-        activated = true
+        promptFired = true
     end)
 end
 
--- Method 3: If still not activated, try to find a remote event under the prompt (some games use this)
-if not activated then
-    local remote = prompt:FindFirstChildWhichIsA("RemoteEvent") or prompt.Parent:FindFirstChildWhichIsA("RemoteEvent")
-    if remote then
-        pcall(function()
-            remote:FireServer()
-            print("Fired remote event under prompt")
-        end)
-    end
+if not promptFired then
+    warn("All prompt methods failed. The store may not open.")
 end
 
+-- Wait for the store interaction to complete (purchase UI, etc.)
+Wait(0.5)
+
+-- Step 6: Teleport back to original position
+print("Step 6: Returning to original position")
+rootPart.CFrame = CFrame.new(originalPos.X, originalPos.Y, originalPos.Z)
 Wait(0.3)
 
--- Step 5: Teleport back to original position
-print("Step 5: Returning to original position")
-rootPart.CFrame = CFrame.new(originalPosition.X, originalPosition.Y, originalPosition.Z)
-Wait(0.3)
-
--- Step 6: Buy SkiMask
-print("Step 6: Buy SkiMask (50)")
+-- Step 7: Buy SkiMask
+print("Step 7: Buying SkiMask (50)")
 BuyRemote:FireServer("SkiMask", 50)
 Wait(0.3)
 
--- Step 7: Equip mask – fire remote directly
-print("Step 7: Equip mask")
-local maskedFolder = character:WaitForChild("MASKED", 10)
-local maskRemote = maskedFolder:WaitForChild("RemoteEvent", 10)
-maskRemote:FireServer("Equip")
+-- Step 8: Equip mask – wait for MASKED folder if necessary
+print("Step 8: Equipping mask")
+local maskedFolder = char:FindFirstChild("MASKED")
+if not maskedFolder then
+    maskedFolder = char:WaitForChild("MASKED", 5)
+end
+if maskedFolder then
+    local maskRemote = maskedFolder:FindFirstChild("RemoteEvent")
+    if not maskRemote then
+        maskRemote = maskedFolder:WaitForChild("RemoteEvent", 5)
+    end
+    if maskRemote then
+        maskRemote:FireServer("Equip")
+        print("Equip remote fired")
+    else
+        warn("RemoteEvent not found in MASKED folder")
+    end
+else
+    warn("MASKED folder not found after purchase")
+end
 
 print("All steps completed.")
