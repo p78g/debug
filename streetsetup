@@ -25,9 +25,6 @@ local function GetCharacter()
     return char, rootPart
 end
 
--- Save original position
-local char, rootPart = GetCharacter()
-local originalPos = rootPart.Position
 
 -- Remotes
 local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
@@ -64,10 +61,12 @@ game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Buy")
 
 wait(0.5)
 
+function getNil(name,class) for _,v in next, getnilinstances()do if v.ClassName==class and v.Name==name then return v;end end end
+
 local args = {
 	"Equip"
 }
-Instance.new("RemoteEvent", nil):FireServer(unpack(args))
+game:GetService("Players").LocalPlayer:WaitForChild("Backpack"):WaitForChild("MASKED"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
 
 
 -- Mark as done
