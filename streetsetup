@@ -79,7 +79,7 @@ else
     -- Fallback: input hold
     local succ, err2 = pcall(function()
         prompt:InputHoldBegin()
-        Wait(0.15)
+        Wait(0.5)
         prompt:InputHoldEnd()
     end)
     if succ then
@@ -94,13 +94,15 @@ if not promptFired then
     warn("ProximityPrompt activation failed. The store may not open.")
 end
 
--- Wait for UI to open
 Wait(0.8)
 
 -- Step 6: Buy SkiMask
-print("[6] Buying SkiMask (50)")
-BuyRemote:FireServer("SkiMask", 50)
-Wait(1.0) -- wait for the mask to appear in inventory
+local args = {
+	"SkiMask",
+	50
+}
+game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Buy"):FireServer(unpack(args))
+
 
 -- Step 7: Equip mask using slot 4
 print("[7] Equipping mask (slot 4)")
@@ -137,6 +139,12 @@ if backpack then
 else
     warn("Backpack not found")
 end
+
+local args = {
+	"Equip"
+}
+game:GetService("Players").LocalPlayer:WaitForChild("Backpack"):WaitForChild("MASKED"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
+
 
 -- Mark as done
 player:SetAttribute("MaskBought", true)
