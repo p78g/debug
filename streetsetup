@@ -1,13 +1,6 @@
 --[[
-    Auto Buy & Equip SkiMask (Slot 4)
+    Auto Buy & Equip SkiMask (No duplicate guards)
 ]]
-
--- Prevent multiple runs in the same session
-local player = game.Players.LocalPlayer
-if player:GetAttribute("MaskBought") then
-    warn("Mask already bought/equipped this session.")
-    return
-end
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -24,7 +17,6 @@ local function GetCharacter()
     local rootPart = char:WaitForChild("HumanoidRootPart", 10)
     return char, rootPart
 end
-
 
 -- Remotes
 local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
@@ -44,7 +36,7 @@ Wait(1.5)
 
 -- Step 3: Get new character
 print("[3] Getting new character")
-char, rootPart = GetCharacter()
+local char, rootPart = GetCharacter()
 print("New character loaded")
 
 -- Step 4: Teleport to Gun Store
@@ -52,7 +44,8 @@ print("[4] Teleport to Gun Store")
 rootPart.CFrame = CFrame.new(1053, 54, -104)
 Wait(0.5)
 
--- Step 6: Buy SkiMask
+-- Step 5: Buy SkiMask
+print("[5] Buying SkiMask (50)")
 local args = {
 	"SkiMask",
 	50
@@ -61,14 +54,19 @@ game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Buy")
 
 wait(0.5)
 
-function getNil(name,class) for _,v in next, getnilinstances()do if v.ClassName==class and v.Name==name then return v;end end end
+-- Step 6: Equip mask
+print("[6] Equipping mask")
+function getNil(name,class) 
+    for _,v in next, getnilinstances() do 
+        if v.ClassName == class and v.Name == name then 
+            return v
+        end 
+    end 
+end
 
 local args = {
 	"Equip"
 }
 game:GetService("Players").LocalPlayer:WaitForChild("Backpack"):WaitForChild("MASKED"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
 
-
--- Mark as done
-player:SetAttribute("MaskBought", true)
 print("✅ All steps completed.")
