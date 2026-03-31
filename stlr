@@ -1,24 +1,23 @@
--- Punch Aura Script
+-- Punch Aura (Toggle with Q)
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local combatRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Combat")
-local notifyRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Notify")  -- adjust if path differs
-
 local localPlayer = Players.LocalPlayer
-local isAuraActive = false
-local loopConnection = nil
 
--- Helper: get nearest player
+local isActive = false
+local loopTask = nil
+
+-- Get nearest player (excluding self)
 local function getNearestPlayer()
     local character = localPlayer.Character
     if not character then return nil end
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return nil end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
 
     local nearest = nil
-    local shortestDist = math.huge
+    local shortest = math.huge
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= localPlayer then
@@ -26,9 +25,9 @@ local function getNearestPlayer()
             if targetChar then
                 local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
                 if targetRoot then
-                    local dist = (targetRoot.Position - rootPart.Position).Magnitude
-                    if dist < shortestDist then
-                        shortestDist = dist
+                    local dist = (targetRoot.Position - root.Position).Magnitude
+                    if dist < shortest then
+                        shortest = dist
                         nearest = player
                     end
                 end
@@ -38,9 +37,9 @@ local function getNearestPlayer()
     return nearest
 end
 
--- Main loop (runs while aura is active)
+-- Main aura loop
 local function auraLoop()
-    while isAuraActive do
+    while isActive do
         local target = getNearestPlayer()
         if target then
             local targetChar = target.Character
@@ -52,32 +51,25 @@ local function auraLoop()
                 end
             end
         end
-        task.wait(0.1)  -- adjust hit speed
+        task.wait(0.1)  -- adjust delay if needed
     end
 end
 
 -- Toggle function
-local function toggleAura()
-    isAuraActive = not isAuraActive
-
-    -- Send notification
-    if notifyRemote then
-        notifyRemote:FireServer("punch aura")  -- adjust arguments as needed
-    end
-
-    if isAuraActive then
-        -- Start the loop in a separate thread
+local function toggle()
+    isActive = not isActive
+    if isActive then
         task.spawn(auraLoop)
-        print("Punch aura ENABLED")
+        print("Punch aura ON")
     else
-        print("Punch aura DISABLED")
+        print("Punch aura OFF")
     end
 end
 
--- Listen for Q key press
+-- Q key to toggle
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.Q then
-        toggleAura()
+        toggle()
     end
 end)
