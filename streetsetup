@@ -1,23 +1,17 @@
 --[[
-    Script: Auto Buy & Equip SkiMask (Backpack version)
-    - Withdraw 5050
-    - Respawn
-    - Teleport to Gun Store (1053, 54, -104)
-    - Activate ProPad ProximityPrompt
-    - Buy SkiMask (50)
-    - Equip mask from Backpack using the exact remote path
+    Auto Buy & Equip SkiMask (single-run)
 ]]
+
+-- Prevent multiple runs (only if you use this script in a persistent environment)
+if _G.AutoMask_Ran then return end
+_G.AutoMask_Ran = true
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 
--- Helper: wait with delay
-local function Wait(delay)
-    task.wait(delay or 0.3)
-end
+local function Wait(sec) task.wait(sec or 0.3) end
 
--- Helper: get current character and its HumanoidRootPart
 local function GetCharacter()
     local char = LocalPlayer.Character
     if not char or not char.Parent then
@@ -27,40 +21,40 @@ local function GetCharacter()
     return char, rootPart
 end
 
--- Save original position (not used later, but kept for reference)
+-- Save original position
 local char, rootPart = GetCharacter()
 local originalPos = rootPart.Position
-print("Original position saved:", originalPos)
+print("Original position:", originalPos)
 
--- Get remote references
+-- Remotes
 local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
 local ATM = remotes:WaitForChild("ATM", 10)
 local ControllerRemote = remotes:WaitForChild("ControllerRemote", 10)
 local BuyRemote = remotes:WaitForChild("Buy", 10)
 
 -- Step 1: Withdraw
-print("Step 1: Withdraw 5050")
+print("[1] Withdraw 5050")
 ATM:FireServer("Withdraw", 5050)
 Wait(0.3)
 
 -- Step 2: Respawn
-print("Step 2: Respawn")
+print("[2] Respawn")
 ControllerRemote:FireServer("/respawn")
-Wait(1.5) -- extra time for respawn to complete
+Wait(1.5)  -- wait for respawn to finish
 
--- Step 3: Get new character after respawn
-print("Step 3: Getting new character")
+-- Step 3: Get new character
+print("[3] Getting new character")
 char, rootPart = GetCharacter()
 print("New character loaded")
 
 -- Step 4: Teleport to Gun Store
-local gunStorePos = Vector3.new(1053, 54, -104)
-print("Step 4: Teleport to Gun Store")
-rootPart.CFrame = CFrame.new(gunStorePos)
+local gunPos = Vector3.new(1053, 54, -104)
+print("[4] Teleport to Gun Store")
+rootPart.CFrame = CFrame.new(gunPos)
 Wait(0.5)
 
--- Step 5: Activate ProPad ProximityPrompt
-print("Step 5: Activating ProximityPrompt")
+-- Step 5: Activate ProximityPrompt
+print("[5] Firing ProximityPrompt")
 local map = workspace:WaitForChild("Map", 10)
 local gunStore = map:WaitForChild("GunStore", 10)
 local gunTable = gunStore:WaitForChild("GunTable", 10)
@@ -68,60 +62,41 @@ local proPad = gunTable:WaitForChild("ProPad", 10)
 local handle = proPad:WaitForChild("Handle", 10)
 local prompt = handle:WaitForChild("ProximityPrompt", 10)
 
--- Move exactly onto the handle to guarantee proximity
-local handlePos = handle.Position
-rootPart.CFrame = CFrame.new(handlePos.X, handlePos.Y + 2, handlePos.Z)
+-- Stand on the handle
+rootPart.CFrame = CFrame.new(handle.Position.X, handle.Position.Y + 2, handle.Position.Z)
 Wait(0.2)
 
--- Fire the prompt
-local promptFired = false
-local success, err = pcall(function()
-    prompt:Prompt()
-end)
-if success then
-    print("Prompt fired via Prompt()")
-    promptFired = true
-else
-    warn("Prompt() failed:", err)
+-- Fire the prompt (both methods for reliability)
+local ok, err = pcall(prompt.Prompt, prompt)
+if not ok then
     pcall(function()
         prompt:InputHoldBegin()
         Wait(0.15)
         prompt:InputHoldEnd()
-        print("Prompt fired via InputHold")
-        promptFired = true
     end)
 end
-
-if not promptFired then
-    warn("ProximityPrompt activation failed. The store may not open.")
-end
-
--- Wait for the store interface to open
-Wait(0.5)
+Wait(0.5)  -- allow store to open
 
 -- Step 6: Buy SkiMask
-print("Step 6: Buying SkiMask (50)")
+print("[6] Buying SkiMask (50)")
 BuyRemote:FireServer("SkiMask", 50)
-Wait(0.5) -- allow purchase to be processed
+Wait(1.0)  -- extra wait to ensure the tool appears in Backpack
 
--- Step 7: Equip mask using the exact remote path from Backpack
-print("Step 7: Equipping mask from Backpack")
-
--- Wait for the MASKED tool to appear in the Backpack
+-- Step 7: Equip mask – using your exact remote path
+print("[7] Equipping mask")
 local backpack = LocalPlayer:WaitForChild("Backpack", 5)
 if backpack then
     local maskedTool = backpack:WaitForChild("MASKED", 5)
     if maskedTool then
-        local remoteEvent = maskedTool:WaitForChild("RemoteEvent", 5)
-        if remoteEvent then
-            local args = {"Equip"}
-            remoteEvent:FireServer(unpack(args))
-            print("Equip remote fired from Backpack")
+        local remote = maskedTool:WaitForChild("RemoteEvent", 5)
+        if remote then
+            remote:FireServer("Equip")   -- same as remote:FireServer(unpack({"Equip"}))
+            print("Equip remote fired!")
         else
             warn("RemoteEvent not found in MASKED tool")
         end
     else
-        warn("MASKED tool not found in Backpack")
+        warn("MASKED tool not found in Backpack – maybe it's in the character?")
     end
 else
     warn("Backpack not found")
