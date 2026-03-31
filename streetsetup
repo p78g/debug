@@ -1,19 +1,22 @@
 --[[
-    Full Automation Script
-    Cooldowns: 0.3s between steps, 0.6s after respawn
+    Single-run Automation Script
     Steps:
-    1. Withdraw 5050 from ATM
-    2. Respawn
-    3. Teleport to Gun Store (1053, 54, -104)
+    1. Withdraw 5050
+    2. Respawn (0.6s wait)
+    3. Teleport to Gun Store (CFrame)
     4. Fire proximity prompt
-    5. Teleport back to original position
-    6. Buy SkiMask (50)
+    5. Teleport back
+    6. Buy SkiMask (only once)
     7. Equip Mask
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
+
+-- Guards to prevent duplicate actions
+local bought = false
+local equipped = false
 
 -- Helper: wait with custom delay
 local function Wait(delay)
@@ -31,12 +34,12 @@ local function GetCharacter()
     return character, rootPart, humanoid
 end
 
--- Helper: safe teleport
+-- Helper: safe teleport using CFrame
 local function TeleportTo(character, x, y, z)
     local rootPart = character and character:FindFirstChild("HumanoidRootPart")
     if rootPart then
         rootPart.CFrame = CFrame.new(x, y, z)
-        Wait(0.1) -- settle physics
+        Wait(0.1) -- let physics settle
         return true
     end
     return false
@@ -62,7 +65,7 @@ Wait(0.3)
 -- Step 2: Respawn
 print("Step 2: Respawning...")
 ControllerRemote:FireServer("/respawn")
-Wait(0.6)  -- Wait extra time for respawn to complete
+Wait(0.6)  -- extra wait for respawn to complete
 
 -- Wait for new character after respawn
 print("Waiting for new character...")
@@ -81,7 +84,7 @@ print("Step 3: Teleporting to (1053, 54, -104)...")
 TeleportTo(character, 1053, 54, -104)
 Wait(0.3)
 
--- Step 4: Fire proximity prompt (using both methods to ensure success)
+-- Step 4: Fire proximity prompt
 print("Step 4: Firing proximity prompt...")
 local promptPath = workspace:WaitForChild("Map", 10):WaitForChild("GunStore", 10):WaitForChild("GunTable", 10):WaitForChild("ProPad", 10):WaitForChild("Handle", 10):WaitForChild("ProximityPrompt", 10)
 if promptPath then
@@ -89,7 +92,7 @@ if promptPath then
         promptPath:Prompt()
     end)
     if not success1 then
-        -- Fallback to InputHoldBegin/End
+        -- Fallback
         pcall(function()
             promptPath:InputHoldBegin()
             Wait(0.1)
@@ -100,27 +103,35 @@ if promptPath then
         print("Prompt fired via Prompt()")
     end
 else
-    warn("ProximityPrompt not found in workspace")
+    warn("ProximityPrompt not found")
 end
 Wait(0.3)
 
--- Step 5: Teleport back to original position
+-- Step 5: Teleport back
 print("Step 5: Returning to original position...")
 TeleportTo(character, originalPosition.X, originalPosition.Y, originalPosition.Z)
 Wait(0.3)
 
--- Step 6: Buy SkiMask
-print("Step 6: Buying SkiMask (50)...")
-BuyRemote:FireServer("SkiMask", 50)
-Wait(0.3)
-
--- Step 7: Equip Mask
-print("Step 7: Equipping mask...")
-if MaskRemote then
-    MaskRemote:FireServer("Equip")
-    print("Equip fired")
+-- Step 6: Buy SkiMask (ONLY ONCE)
+if not bought then
+    print("Step 6: Buying SkiMask (50)...")
+    BuyRemote:FireServer("SkiMask", 50)
+    bought = true
+    Wait(0.3)
 else
-    warn("MaskRemote missing – skipping equip")
+    warn("Already bought mask, skipping step 6")
 end
 
-print("All steps completed!")
+-- Step 7: Equip Mask (ONLY ONCE)
+if not equipped and MaskRemote then
+    print("Step 7: Equipping mask...")
+    MaskRemote:FireServer("Equip")
+    equipped = true
+    print("Equip fired")
+elseif not MaskRemote then
+    warn("MaskRemote missing – skipping equip")
+else
+    warn("Already equipped mask, skipping step 7")
+end
+
+print("All steps completed successfully.")
