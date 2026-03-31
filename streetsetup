@@ -1,10 +1,10 @@
 --[[
-    Simple Automation Script
+    Simple Automation Script (with improved prompt firing)
     Steps:
     1. Withdraw 5050
     2. Respawn (0.6s wait)
     3. Teleport to Gun Store (CFrame)
-    4. Fire proximity prompt
+    4. Fire proximity prompt (robust)
     5. Teleport back to original position
     6. Buy SkiMask (50)
     7. Equip Mask (fire remote directly)
@@ -43,6 +43,7 @@ local BuyRemote = Remotes:WaitForChild("Buy", 10)
 -- Step 1: Withdraw
 print("Step 1: Withdraw 5050")
 ATM:FireServer("Withdraw", 5050)
+Wait(0.3)
 
 -- Step 2: Respawn
 print("Step 2: Respawn")
@@ -58,10 +59,58 @@ print("New character loaded, teleporting to Gun Store")
 rootPart.CFrame = CFrame.new(1053, 54, -104)
 Wait(0.5)
 
--- Step 4: Fire proximity prompt
+-- Step 4: Fire proximity prompt (robust version)
 print("Step 4: Firing proximity prompt")
-local prompt = workspace:WaitForChild("Map", 10):WaitForChild("GunStore", 10):WaitForChild("GunTable", 10):WaitForChild("ProPad", 10):WaitForChild("Handle", 10):WaitForChild("ProximityPrompt", 10)
-prompt:Prompt()  -- directly fire, no fallback
+
+-- Get the Handle part and its prompt
+local map = workspace:WaitForChild("Map", 10)
+local gunStore = map:WaitForChild("GunStore", 10)
+local gunTable = gunStore:WaitForChild("GunTable", 10)
+local proPad = gunTable:WaitForChild("ProPad", 10)
+local handle = proPad:WaitForChild("Handle", 10)
+local prompt = handle:WaitForChild("ProximityPrompt", 10)
+
+-- Move exactly onto the handle to ensure proximity
+local handlePos = handle.Position
+rootPart.CFrame = CFrame.new(handlePos.X, handlePos.Y + 2, handlePos.Z)  -- stand on the handle
+Wait(0.2)
+
+-- Try multiple methods to activate the prompt
+local activated = false
+
+-- Method 1: Use Prompt()
+local success, err = pcall(function()
+    prompt:Prompt()
+end)
+if success then
+    print("Prompt fired via Prompt()")
+    activated = true
+else
+    warn("Prompt() failed:", err)
+end
+
+-- Method 2: Simulate input hold if first failed
+if not activated then
+    pcall(function()
+        prompt:InputHoldBegin()
+        Wait(0.1)
+        prompt:InputHoldEnd()
+        print("Prompt fired via InputHold")
+        activated = true
+    end)
+end
+
+-- Method 3: If still not activated, try to find a remote event under the prompt (some games use this)
+if not activated then
+    local remote = prompt:FindFirstChildWhichIsA("RemoteEvent") or prompt.Parent:FindFirstChildWhichIsA("RemoteEvent")
+    if remote then
+        pcall(function()
+            remote:FireServer()
+            print("Fired remote event under prompt")
+        end)
+    end
+end
+
 Wait(0.3)
 
 -- Step 5: Teleport back to original position
