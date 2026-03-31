@@ -1,8 +1,8 @@
 --[[
-    Auto Buy & Equip SkiMask – Single Run (no duplicates)
+    Auto Buy & Equip SkiMask (Slot 4)
 ]]
 
--- Prevent running again if already done in this session
+-- Prevent multiple runs in the same session
 local player = game.Players.LocalPlayer
 if player:GetAttribute("MaskBought") then
     warn("Mask already bought/equipped this session.")
@@ -12,8 +12,9 @@ end
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
 
-local function Wait(delay) task.wait(delay or 0.3) end
+local function Wait(sec) task.wait(sec or 0.3) end
 
 local function GetCharacter()
     local char = LocalPlayer.Character
@@ -35,21 +36,27 @@ local ControllerRemote = remotes:WaitForChild("ControllerRemote", 10)
 local BuyRemote = remotes:WaitForChild("Buy", 10)
 
 -- Step 1: Withdraw
+print("[1] Withdraw 5050")
 ATM:FireServer("Withdraw", 5050)
 Wait(0.3)
 
 -- Step 2: Respawn
+print("[2] Respawn")
 ControllerRemote:FireServer("/respawn")
 Wait(1.5)
 
 -- Step 3: Get new character
+print("[3] Getting new character")
 char, rootPart = GetCharacter()
+print("New character loaded")
 
 -- Step 4: Teleport to Gun Store
+print("[4] Teleport to Gun Store")
 rootPart.CFrame = CFrame.new(1053, 54, -104)
 Wait(0.5)
 
--- Step 5: Activate ProximityPrompt
+-- Step 5: Activate ProximityPrompt (more robust)
+print("[5] Activating ProximityPrompt")
 local map = workspace:WaitForChild("Map", 10)
 local gunStore = map:WaitForChild("GunStore", 10)
 local gunTable = gunStore:WaitForChild("GunTable", 10)
@@ -57,22 +64,80 @@ local proPad = gunTable:WaitForChild("ProPad", 10)
 local handle = proPad:WaitForChild("Handle", 10)
 local prompt = handle:WaitForChild("ProximityPrompt", 10)
 
--- Stand on the handle
+-- Stand exactly on the handle
 rootPart.CFrame = CFrame.new(handle.Position.X, handle.Position.Y + 2, handle.Position.Z)
 Wait(0.2)
 
-pcall(prompt.Prompt, prompt)  -- fire prompt
-Wait(0.5)
+-- Try to fire the prompt
+local promptFired = false
+local ok, err = pcall(prompt.Prompt, prompt)
+if ok then
+    print("Prompt fired via Prompt()")
+    promptFired = true
+else
+    warn("Prompt() failed:", err)
+    -- Fallback: input hold
+    local succ, err2 = pcall(function()
+        prompt:InputHoldBegin()
+        Wait(0.15)
+        prompt:InputHoldEnd()
+    end)
+    if succ then
+        print("Prompt fired via InputHold")
+        promptFired = true
+    else
+        warn("InputHold failed:", err2)
+    end
+end
+
+if not promptFired then
+    warn("ProximityPrompt activation failed. The store may not open.")
+end
+
+-- Wait for UI to open
+Wait(0.8)
 
 -- Step 6: Buy SkiMask
+print("[6] Buying SkiMask (50)")
 BuyRemote:FireServer("SkiMask", 50)
-Wait(1.0)  -- give time for the tool to appear in backpack
+Wait(1.0) -- wait for the mask to appear in inventory
 
--- Step 7: Equip mask – EXACTLY as you requested
-local args = { "Equip" }
-game:GetService("Players").LocalPlayer:WaitForChild("Backpack"):WaitForChild("MASKED"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
+-- Step 7: Equip mask using slot 4
+print("[7] Equipping mask (slot 4)")
 
--- Mark as done so this won't run again
+-- Option 1: Try to find the mask in Backpack and use its remote (original method)
+local backpack = LocalPlayer:FindFirstChild("Backpack")
+if backpack then
+    local maskedTool = backpack:FindFirstChild("MASKED")
+    if maskedTool then
+        local remote = maskedTool:FindFirstChild("RemoteEvent")
+        if remote then
+            remote:FireServer("Equip")
+            print("Equipped via Backpack remote")
+        else
+            warn("RemoteEvent not found in MASKED tool")
+        end
+    else
+        warn("MASKED tool not found in Backpack – trying slot equip")
+        -- Option 2: Simulate pressing the 4 key (standard Roblox hotbar)
+        -- This works if the mask is automatically placed in slot 4 after purchase
+        local key = Enum.KeyCode.Four  -- or Enum.KeyCode.KeypadFour
+        UserInputService:SetKeyDown(true, key)
+        Wait(0.05)
+        UserInputService:SetKeyDown(false, key)
+        print("Simulated press of key 4")
+        
+        -- Option 3: If the game uses a remote to equip by slot index
+        local equipSlotRemote = remotes:FindFirstChild("EquipSlot") or remotes:FindFirstChild("EquipItem")
+        if equipSlotRemote then
+            pcall(equipSlotRemote.FireServer, equipSlotRemote, 4)
+            print("Fired equip slot remote with index 4")
+        end
+    end
+else
+    warn("Backpack not found")
+end
+
+-- Mark as done
 player:SetAttribute("MaskBought", true)
-
-print("✅ Mask bought and equipped.")
+print("✅ All steps completed.")
