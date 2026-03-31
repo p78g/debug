@@ -1,4 +1,4 @@
--- Punch Aura (Toggle with Q)
+-- Punch Aura (Toggle with Q) - IGNORES 1_l8q and relkonta
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -13,9 +13,19 @@ end) and ReplicatedStorage.Remotes.Notify or nil
 local localPlayer = Players.LocalPlayer
 
 local isActive = false
-local loopTask = nil
 
--- Get nearest player (excluding self)
+-- List of players to ignore (never target)
+local ignoredPlayers = {
+    "1_l8q",
+    "relkonta"
+}
+
+-- Helper: check if a player is in the ignore list
+local function isIgnored(player)
+    return table.find(ignoredPlayers, player.Name) ~= nil
+end
+
+-- Get nearest player (excluding self and ignored players)
 local function getNearestPlayer()
     local character = localPlayer.Character
     if not character then return nil end
@@ -26,7 +36,7 @@ local function getNearestPlayer()
     local shortest = math.huge
 
     for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= localPlayer then
+        if player ~= localPlayer and not isIgnored(player) then
             local targetChar = player.Character
             if targetChar then
                 local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
@@ -79,80 +89,6 @@ local function toggle()
         print("Punch aura ON")
     else
         sendNotify("punch aura off")
-        print("Punch aura OFF")
-    end
-end
-
--- Q key to toggle
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.Q then
-        toggle()
-    end
-end)-- Punch Aura (Toggle with Q)
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local combatRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Combat")
-local localPlayer = Players.LocalPlayer
-
-local isActive = false
-local loopTask = nil
-
--- Get nearest player (excluding self)
-local function getNearestPlayer()
-    local character = localPlayer.Character
-    if not character then return nil end
-    local root = character:FindFirstChild("HumanoidRootPart")
-    if not root then return nil end
-
-    local nearest = nil
-    local shortest = math.huge
-
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= localPlayer then
-            local targetChar = player.Character
-            if targetChar then
-                local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
-                if targetRoot then
-                    local dist = (targetRoot.Position - root.Position).Magnitude
-                    if dist < shortest then
-                        shortest = dist
-                        nearest = player
-                    end
-                end
-            end
-        end
-    end
-    return nearest
-end
-
--- Main aura loop
-local function auraLoop()
-    while isActive do
-        local target = getNearestPlayer()
-        if target then
-            local targetChar = target.Character
-            if targetChar then
-                local humanoid = targetChar:FindFirstChild("Humanoid")
-                local head = targetChar:FindFirstChild("Head")
-                if humanoid and head then
-                    combatRemote:FireServer("Hit", humanoid, head)
-                end
-            end
-        end
-        task.wait(0.1)  -- adjust delay if needed
-    end
-end
-
--- Toggle function
-local function toggle()
-    isActive = not isActive
-    if isActive then
-        task.spawn(auraLoop)
-        print("Punch aura ON")
-    else
         print("Punch aura OFF")
     end
 end
