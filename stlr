@@ -4,6 +4,97 @@ local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local combatRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Combat")
+
+-- Try to get the Notify remote (adjust path if needed)
+local notifyRemote = pcall(function()
+    return ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Notify")
+end) and ReplicatedStorage.Remotes.Notify or nil
+
+local localPlayer = Players.LocalPlayer
+
+local isActive = false
+local loopTask = nil
+
+-- Get nearest player (excluding self)
+local function getNearestPlayer()
+    local character = localPlayer.Character
+    if not character then return nil end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+
+    local nearest = nil
+    local shortest = math.huge
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer then
+            local targetChar = player.Character
+            if targetChar then
+                local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
+                if targetRoot then
+                    local dist = (targetRoot.Position - root.Position).Magnitude
+                    if dist < shortest then
+                        shortest = dist
+                        nearest = player
+                    end
+                end
+            end
+        end
+    end
+    return nearest
+end
+
+-- Main aura loop
+local function auraLoop()
+    while isActive do
+        local target = getNearestPlayer()
+        if target then
+            local targetChar = target.Character
+            if targetChar then
+                local humanoid = targetChar:FindFirstChild("Humanoid")
+                local head = targetChar:FindFirstChild("Head")
+                if humanoid and head then
+                    combatRemote:FireServer("Hit", humanoid, head)
+                end
+            end
+        end
+        task.wait(0.1)  -- adjust hit speed
+    end
+end
+
+-- Send notification (if remote exists)
+local function sendNotify(msg)
+    if notifyRemote then
+        pcall(function()
+            notifyRemote:FireServer(msg)   -- adjust arguments if needed
+        end)
+    end
+end
+
+-- Toggle function
+local function toggle()
+    isActive = not isActive
+    if isActive then
+        sendNotify("punch aura on")
+        task.spawn(auraLoop)
+        print("Punch aura ON")
+    else
+        sendNotify("punch aura off")
+        print("Punch aura OFF")
+    end
+end
+
+-- Q key to toggle
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.Q then
+        toggle()
+    end
+end)-- Punch Aura (Toggle with Q)
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local combatRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Combat")
 local localPlayer = Players.LocalPlayer
 
 local isActive = false
