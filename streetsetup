@@ -45,6 +45,11 @@ print("[2] Respawn")
 ControllerRemote:FireServer("/respawn")
 Wait(1.5)
 
+-- Step 3: Get new character
+print("[3] Getting new character")
+char, rootPart = GetCharacter()
+print("New character loaded")
+
 -- Step 4: Teleport to Gun Store
 print("[4] Teleport to Gun Store")
 rootPart.CFrame = CFrame.new(1053, 54, -104)
@@ -57,12 +62,14 @@ local args = {
 }
 game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Buy"):FireServer(unpack(args))
 
-wait 0.5
+wait(0.5)
+
+function getNil(name,class) for _,v in next, getnilinstances()do if v.ClassName==class and v.Name==name then return v;end end end
 
 local args = {
 	"Equip"
 }
-game:GetService("Players").LocalPlayer:WaitForChild("Backpack"):WaitForChild("MASKED"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
+Instance.new("RemoteEvent", nil):FireServer(unpack(args))
 
 
 -- Mark as done
