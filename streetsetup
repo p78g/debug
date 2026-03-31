@@ -48,7 +48,7 @@ Wait(0.3)
 -- Step 2: Respawn
 print("Step 2: Respawn")
 ControllerRemote:FireServer("/respawn")
-Wait(0.6)  -- extra time for respawn to complete
+Wait(1.5)  -- extra time for respawn to complete
 
 -- Step 3: Get new character after respawn
 print("Waiting for new character...")
