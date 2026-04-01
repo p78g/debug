@@ -2,7 +2,7 @@
     Car Chopper Script with Iris GUI
     - ATM Withdraw + Respawn + GunStore prompt + Buy SkiMask on load
     - Dynamic car list showing "Username's CarType"
-    - Chop button: ProPad spam → Delete wheels → Safe teleport + 20s anchor
+    - Chop button with 0.1s delay after ProPad spam before teleporting to DriveSeat
 --]]
 
 local Players = game:GetService("Players")
@@ -100,24 +100,29 @@ local function chopCar(carInstance, displayName)
     if not carInstance then return end
     print("[Chop] Starting chop on:", displayName)
 
-    -- Teleport to DriveSeat
-    local driveSeat = carInstance:FindFirstChild("DriveSeat")
-    if driveSeat then
-        local rootPart = waitForCharacter():FindFirstChild("HumanoidRootPart")
-        if rootPart then
-            rootPart.CFrame = driveSeat.CFrame + Vector3.new(0, 3, 0)
-        end
-    end
-    task.wait(0.8)
-
-    -- Fire ProPad 5 times
+    -- Fire ProPad remote 5 times
     local proPadRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ProPad")
     for i = 1, 5 do
         proPadRemote:FireServer(carInstance, true)
         task.wait(0.2)
     end
 
-    task.wait(13)  -- Wait as requested
+    -- NEW: 0.1 second delay after ProPad spam
+    task.wait(0.1)
+
+    -- Teleport to DriveSeat
+    local driveSeat = carInstance:FindFirstChild("DriveSeat")
+    if driveSeat then
+        local rootPart = waitForCharacter():FindFirstChild("HumanoidRootPart")
+        if rootPart then
+            rootPart.CFrame = driveSeat.CFrame + Vector3.new(0, 3, 0)
+            print("[Chop] Teleported to DriveSeat")
+        end
+    end
+    task.wait(0.8)
+
+    -- Wait 13 seconds
+    task.wait(13)
 
     -- Delete wheels
     local wheels = carInstance:FindFirstChild("Wheels")
@@ -129,7 +134,7 @@ local function chopCar(carInstance, displayName)
         print("[Chop] Wheels deleted")
     end
 
-    -- Final teleport + anchor 20 seconds
+    -- Final teleport + anchor for 20 seconds
     local finalRoot = waitForCharacter():FindFirstChild("HumanoidRootPart")
     if finalRoot then
         finalRoot.CFrame = CFrame.new(1096, 70, 608)
