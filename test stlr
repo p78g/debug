@@ -1,14 +1,15 @@
 --[[
-    Fixed Iris GUI + Start Full Sequence
-    - Correct Iris widget structure for this bundle
-    - Buttons now respond properly
-    - High teleport/anchor only on manual reset (not on death)
+    Stable Version - Fixed Iris GUI + Manual Reset Only
+    - GUI should now respond to clicks
+    - High teleport/anchor only when you press the Start button
+    - Orbit always below target
 --]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
+
 local localPlayer = Players.LocalPlayer
 local playerName = localPlayer.Name
 
@@ -31,7 +32,7 @@ local function safeFind(instance, path)
     return current
 end
 
--- ========== Strong Inventory Protection ==========
+-- ========== Inventory Protection ==========
 local function enableInventory()
     pcall(function()
         StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, true)
@@ -39,24 +40,19 @@ local function enableInventory()
     end)
 end
 
-local function strongInventorySpam()
+coroutine.wrap(function()
     while true do
         task.wait(0.15)
         enableInventory()
-        local char = localPlayer.Character
-        if char then
-            local hum = char:FindFirstChild("Humanoid")
-            if hum then
-                hum:SetAttribute("InventoryEnabled", true)
-                hum:SetAttribute("CanOpenInventory", true)
-            end
+        local hum = localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid")
+        if hum then
+            hum:SetAttribute("InventoryEnabled", true)
+            hum:SetAttribute("CanOpenInventory", true)
         end
-        localPlayer:SetAttribute("InventoryEnabled", true)
     end
-end
-coroutine.wrap(strongInventorySpam)()
+end)()
 
--- ========== Full Sequence ==========
+-- ========== Full Sequence (Manual Reset) ==========
 local sequenceRunning = false
 
 local function runFullSequence()
@@ -64,19 +60,20 @@ local function runFullSequence()
     sequenceRunning = true
     print("[Sequence] Starting full reset...")
 
-    -- Respawn + Buy + Teleport
+    -- Respawn + Buy SkiMask
     ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ControllerRemote"):FireServer("/respawn")
     task.wait(1.6)
     ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Buy"):FireServer("SkiMask", 50)
+
+    -- Teleport to start
     local root = waitForCharacter():FindFirstChild("HumanoidRootPart")
     if root then root.CFrame = CFrame.new(541, 52, -93) end
     task.wait(0.6)
 
-    -- Anchor during scooter
+    -- Scooter prompt
     root = waitForCharacter():FindFirstChild("HumanoidRootPart")
     if root then root.Anchored = true end
 
-    -- Scooter prompt
     local scooter = safeFind(workspace, {"Map", "Scooters", "Scooter1"})
     if scooter then
         local prompt = scooter:FindFirstChild("ProximityPrompt") or safeFind(scooter, {"Position", "ProximityPrompt"})
@@ -88,7 +85,6 @@ local function runFullSequence()
                 prompt:InputHoldBegin()
                 task.wait(1.2)
                 prompt:InputHoldEnd()
-                print("[Scooter] Prompt completed")
             end
         end
     end
@@ -96,7 +92,7 @@ local function runFullSequence()
     task.wait(2)
     if root then root.Anchored = false end
 
-    -- Car modifications
+    -- Car mods
     local car = safeFind(workspace, {"Vehicles", playerName .. "'s Car"})
     if car then
         local wheels = car:FindFirstChild("Wheels")
@@ -113,7 +109,7 @@ local function runFullSequence()
         end
     end
 
-    -- Final high position + anchor (only when manually resetting)
+    -- Final high position + anchor (only on manual reset)
     root = waitForCharacter():FindFirstChild("HumanoidRootPart")
     if root then
         root.CFrame = CFrame.new(root.Position.X, 1000, root.Position.Z)
@@ -121,7 +117,7 @@ local function runFullSequence()
         root.Anchored = true
     end
 
-    print("[Sequence] Full sequence completed!")
+    print("[Sequence] Reset completed! You are now anchored high up.")
     sequenceRunning = false
 end
 
@@ -200,13 +196,13 @@ local function startOrbit(targetPlayer)
     end)
 end
 
--- ========== Iris GUI (Fixed Structure) ==========
+-- ========== Iris GUI (Stable Structure) ==========
 local Iris = loadstring(game:HttpGet("https://raw.githubusercontent.com/x0581/Iris-Exploit-Bundle/main/bundle.lua"))().Init(game.CoreGui)
 Iris.UpdateGlobalConfig(Iris.TemplateConfig.colorDark)
 
 Iris:Connect(function()
-    Iris.Window({"Player Orbit Control"}, function()
-        -- Start Full Sequence Button
+    Iris.Window({"Player Orbit Control"}, {size = Iris.State(Vector2.new(380, 560))})
+
         if Iris.Button({"🚀 Start Full Sequence"}).clicked and not sequenceRunning then
             runFullSequence()
         end
@@ -215,8 +211,7 @@ Iris:Connect(function()
 
         Iris.Text({"Select Target Player:"})
 
-        local tree = Iris.Tree({"Players List"})
-        if tree.state.isUncollapsed.value then
+        Iris.Tree({"Players List"})
             for _, plr in ipairs(Players:GetPlayers()) do
                 if plr ~= localPlayer then
                     if Iris.Button({plr.Name}).clicked then
@@ -225,7 +220,6 @@ Iris:Connect(function()
                         selectedPlayerName = plr.Name
                         local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
                         if root then root.Anchored = false end
-                        print("Selected:", plr.Name)
                     end
 
                     if selectedPlayerName == plr.Name then
@@ -234,9 +228,7 @@ Iris:Connect(function()
                     end
                 end
             end
-            Iris.End() -- End Tree content
-        end
-        Iris.End() -- End Tree
+        Iris.End()  -- End Tree
 
         Iris.Separator()
 
@@ -255,18 +247,14 @@ Iris:Connect(function()
             print("Player list refreshed")
         end
 
-        -- Status
         Iris.Text({"Selected: " .. (selectedPlayerName or "None")})
         if orbiting then Iris.Text({"Status: Orbiting Below Target"}) end
         Iris.Text({"Inventory Protection: ACTIVE"})
-        if sequenceRunning then Iris.Text({"Running Full Sequence..."}) end
 
-        Iris.End() -- End Window
-    end)
-    Iris.End() -- End Connect
+    Iris.End()  -- End Window
 end)
 
--- Initial run
+-- Run once when script is executed
 runFullSequence()
 
-print("Script loaded! Use the big '🚀 Start Full Sequence' button after dying.")
+print("Script loaded. Use the '🚀 Start Full Sequence' button after dying.")
