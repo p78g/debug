@@ -1,7 +1,6 @@
 --[[
-    Car Chopper Script - Updated Delay
-    - 0.1s delay after ProPad remote
-    - 40 studs up → 1.5 second delay → Equip ProPad → Immediate teleport to DriveSeat
+    Car Chopper Script - Corrected Order
+    - Proper sequence: ProPad remote → 40 studs up → 1.5s wait → Equip ProPad → Teleport to DriveSeat
 --]]
 
 local Players = game:GetService("Players")
@@ -92,27 +91,24 @@ local function chopCar(carInstance, displayName)
     if not carInstance then return end
     print("[Chop] Starting on:", displayName)
 
-    -- Fire ProPad remote 5 times
+    -- 1. Fire ProPad remote 5 times
     local proPadRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ProPad")
     for i = 1, 5 do
         proPadRemote:FireServer(carInstance, true)
         task.wait(0.2)
     end
 
-    -- 0.1 second delay after ProPad remote
-    task.wait(0.1)
-
-    -- Teleport 40 studs up
+    -- 2. Teleport 40 studs up
     local rootPart = waitForCharacter():FindFirstChild("HumanoidRootPart")
     if rootPart then
         rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 40, 0)
         print("[Chop] Teleported 40 studs up")
     end
-    
-    -- 1.5 second delay (updated as requested)
+
+    -- 3. 1.5 second delay
     task.wait(1.5)
 
-    -- Equip ProPad from Backpack
+    -- 4. Equip ProPad
     local proPadTool = localPlayer.Backpack:FindFirstChild("ProPad")
     if proPadTool then
         local character = waitForCharacter()
@@ -122,7 +118,7 @@ local function chopCar(carInstance, displayName)
         warn("[Chop] ProPad not found in Backpack")
     end
 
-    -- Immediately teleport to DriveSeat (no cooldown)
+    -- 5. Immediately teleport to DriveSeat
     local driveSeat = carInstance:FindFirstChild("DriveSeat")
     if driveSeat and rootPart then
         rootPart.CFrame = driveSeat.CFrame + Vector3.new(0, 3, 0)
@@ -205,4 +201,4 @@ Iris:Connect(function()
 end)
 
 print("Car Chopper script loaded!")
-print("Chop sequence updated: ProPad remote → 0.1s → 40 studs up → 1.5s wait → Equip ProPad → Teleport to DriveSeat")
+print("Corrected chop order: ProPad remote → 40 studs up → 1.5s wait → Equip ProPad → Teleport to DriveSeat")
