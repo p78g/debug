@@ -1,9 +1,9 @@
 --[[
-    Final Version - Orbit Always Below Target
-    - Orbit position is now clearly underneath the target to reduce detection
-    - Continuous Combat Hit remote
-    - Strong Infinite Yield style inventory protection
-    - Anchor delay after high teleport
+    Final Version + Start Full Sequence Button
+    - New "Start Full Sequence" button to reset everything
+    - Orbit always below target
+    - Strong inventory protection
+    - Continuous hit remote
 --]]
 
 local Players = game:GetService("Players")
@@ -32,7 +32,7 @@ local function safeFind(instance, path)
     return current
 end
 
--- ========== Strong Inventory Protection (Infinite Yield Style) ==========
+-- ========== Strong Inventory Protection ==========
 local function enableInventory()
     pcall(function()
         StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, true)
@@ -58,7 +58,44 @@ local function strongInventorySpam()
 end
 coroutine.wrap(strongInventorySpam)()
 
--- ========== Initial Actions ==========
+-- ========== Full Initial Sequence Function ==========
+local sequenceRunning = false
+
+local function runFullSequence()
+    if sequenceRunning then return end
+    sequenceRunning = true
+    
+    print("[Sequence] Starting full reset sequence...")
+    
+    respawn()
+    task.wait(1.6)
+    buySkiMask()
+    teleportTo(541, 52, -93)
+    task.wait(0.6)
+
+    local root = waitForCharacter():FindFirstChild("HumanoidRootPart")
+    if root then root.Anchored = true end
+
+    holdScooterPrompt()
+    task.wait(2)
+
+    if root then root.Anchored = false end
+
+    deleteCarWheels()
+    modifyWeight()
+
+    local finalRoot = waitForCharacter():FindFirstChild("HumanoidRootPart")
+    if finalRoot then
+        finalRoot.CFrame = CFrame.new(finalRoot.Position.X, 1000, finalRoot.Position.Z)
+        task.wait(0.5)
+        finalRoot.Anchored = true
+    end
+
+    print("[Sequence] Full sequence completed!")
+    sequenceRunning = false
+end
+
+-- ========== Initial Actions Functions ==========
 local function respawn()
     ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ControllerRemote"):FireServer("/respawn")
 end
@@ -117,7 +154,7 @@ local function modifyWeight()
     end
 end
 
--- ========== Orbit Logic - Always Below Target ==========
+-- ========== Orbit Logic (Always Below Target) ==========
 local currentTarget = nil
 local orbiting = false
 local orbitConnection = nil
@@ -125,7 +162,7 @@ local hitConnection = nil
 local selectedPlayerName = nil
 
 local ORBIT_RADIUS = 12
-local VERTICAL_OFFSET = -12     -- ← Increased downward offset (more under the target)
+local VERTICAL_OFFSET = -12
 local ANGULAR_SPEED = 8
 local ANCHOR_DELAY = 0.5
 
@@ -137,10 +174,8 @@ local function stopOrbitAndTeleport()
     local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
     if root then
         root.CFrame = CFrame.new(root.Position.X, 1000, root.Position.Z)
-        print("[Orbit] Teleported high up")
         task.wait(ANCHOR_DELAY)
         root.Anchored = true
-        print("[Orbit] Anchored after delay")
     end
 end
 
@@ -155,7 +190,7 @@ local function startOrbit(targetPlayer)
     local lRoot = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
     if lRoot then lRoot.Anchored = false end
     
-    -- Continuous Hit Remote
+    -- Continuous Hit
     hitConnection = RunService.Heartbeat:Connect(function()
         if not orbiting or not targetPlayer.Character then return end
         local tChar = targetPlayer.Character
@@ -166,7 +201,7 @@ local function startOrbit(targetPlayer)
         end
     end)
     
-    -- Orbit movement (always below)
+    -- Orbit movement
     local angle = 0
     local lastUpdate = os.clock()
     
@@ -190,7 +225,6 @@ local function startOrbit(targetPlayer)
         local targetPos = tRoot.Position
         local newPos = targetPos + Vector3.new(offsetX, VERTICAL_OFFSET, offsetZ)
         
-        -- Force position to stay below target
         if newPos.Y > targetPos.Y - 1 then
             newPos = Vector3.new(newPos.X, targetPos.Y - 1.5, newPos.Z)
         end
@@ -199,12 +233,19 @@ local function startOrbit(targetPlayer)
     end)
 end
 
--- ========== Iris GUI ==========
+-- ========== Iris GUI with Start Sequence Button ==========
 local Iris = loadstring(game:HttpGet("https://raw.githubusercontent.com/x0581/Iris-Exploit-Bundle/main/bundle.lua"))().Init(game.CoreGui)
 Iris.UpdateGlobalConfig(Iris.TemplateConfig.colorDark)
 
 Iris:Connect(function()
-    Iris.Window({"Player Orbit Control"}, {size = Iris.State(Vector2.new(360, 520))})
+    Iris.Window({"Player Orbit Control"}, {size = Iris.State(Vector2.new(380, 560))})
+        
+        -- Start Full Sequence Button
+        if Iris.Button({"🚀 Start Full Sequence"}).clicked and not sequenceRunning then
+            runFullSequence()
+        end
+        
+        Iris.Separator()
         
         Iris.Text({"Select Target Player:"})
         
@@ -218,7 +259,6 @@ Iris:Connect(function()
                         selectedPlayerName = plr.Name
                         local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
                         if root then root.Anchored = false end
-                        print("Selected:", plr.Name)
                     end
                     
                     if selectedPlayerName == plr.Name then
@@ -246,39 +286,21 @@ Iris:Connect(function()
             print("Player list refreshed")
         end
         
+        -- Status
         Iris.Text({"Selected: " .. (selectedPlayerName or "None")})
         if orbiting then 
-            Iris.Text({"Status: Orbiting (Below Target)"})
+            Iris.Text({"Status: Orbiting Below Target"})
         end
-        Iris.Text({"Inventory Protection: ACTIVE (IY Style)"})
+        Iris.Text({"Inventory Protection: ACTIVE"})
+        if sequenceRunning then
+            Iris.Text({"Sequence Running..."})
+        end
         
     Iris.End()
 end)
 
--- ========== Execution Sequence ==========
-respawn()
-task.wait(1.6)
-buySkiMask()
-teleportTo(541, 52, -93)
-task.wait(0.6)
+-- ========== Initial Execution (runs once when script loads) ==========
+runFullSequence()
 
-local root = waitForCharacter():FindFirstChild("HumanoidRootPart")
-if root then root.Anchored = true end
-
-holdScooterPrompt()
-task.wait(2)
-
-if root then root.Anchored = false end
-
-deleteCarWheels()
-modifyWeight()
-
-local finalRoot = waitForCharacter():FindFirstChild("HumanoidRootPart")
-if finalRoot then
-    finalRoot.CFrame = CFrame.new(finalRoot.Position.X, 1000, finalRoot.Position.Z)
-    task.wait(ANCHOR_DELAY)
-    finalRoot.Anchored = true
-end
-
-print("Script loaded!")
-print("Orbit is now positioned UNDER the target to reduce detection.")
+print("Script loaded with Start Full Sequence button!")
+print("Click '🚀 Start Full Sequence' anytime you need to reset.")
