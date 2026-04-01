@@ -1,0 +1,196 @@
+--[[
+    Car Chopper Script with Iris GUI
+    - ATM Withdraw + Respawn + GunStore prompt + Buy SkiMask on load
+    - Dynamic car list showing "Username's CarType"
+    - Chop button: ProPad spam → Delete wheels → Safe teleport + 20s anchor
+--]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local StarterGui = game:GetService("StarterGui")
+local Workspace = game:GetService("Workspace")
+
+local localPlayer = Players.LocalPlayer
+local playerName = localPlayer.Name
+
+-- ========== Helpers ==========
+local function waitForCharacter()
+    local char = localPlayer.Character
+    if not char or not char.Parent then
+        char = localPlayer.CharacterAdded:Wait()
+    end
+    return char
+end
+
+local function safeFind(instance, path)
+    if type(path) == "string" then path = path:split(".") end
+    local current = instance
+    for _, v in ipairs(path) do
+        if not current then return nil end
+        current = current:FindFirstChild(v)
+    end
+    return current
+end
+
+-- ========== Strong Inventory Protection ==========
+local function enableInventory()
+    pcall(function()
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, true)
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Inventory, true)
+    end)
+end
+
+coroutine.wrap(function()
+    while true do
+        task.wait(0.15)
+        enableInventory()
+        local hum = localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid")
+        if hum then
+            hum:SetAttribute("InventoryEnabled", true)
+            hum:SetAttribute("CanOpenInventory", true)
+        end
+    end
+end)()
+
+-- ========== Initial Sequence (runs once on load) ==========
+print("[Init] Starting initial sequence...")
+
+-- Withdraw from ATM
+ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ATM"):FireServer("Withdraw", 5050)
+task.wait(0.5)
+
+-- Respawn
+ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ControllerRemote"):FireServer("/respawn")
+task.wait(1.6)
+
+-- Teleport to GunStore area
+local root = waitForCharacter():FindFirstChild("HumanoidRootPart")
+if root then root.CFrame = CFrame.new(1053, 54, -104) end
+task.wait(0.8)
+
+-- Hold GunTable ProximityPrompt
+local gunPrompt = safeFind(Workspace, {"Map", "GunStore", "GunTable", "ProPad", "Handle", "ProximityPrompt"})
+if gunPrompt then
+    local targetPart = gunPrompt.Parent:IsA("BasePart") and gunPrompt.Parent or gunPrompt.Parent:FindFirstChildWhichIsA("BasePart")
+    if targetPart and root then
+        root.CFrame = CFrame.new(targetPart.Position + Vector3.new(0, 4, 0))
+        task.wait(0.4)
+        print("[GunStore] Holding prompt...")
+        gunPrompt:InputHoldBegin()
+        task.wait(2)
+        gunPrompt:InputHoldEnd()
+        print("[GunStore] Prompt completed")
+    end
+else
+    warn("[GunStore] ProximityPrompt not found")
+end
+
+-- Buy SkiMask
+ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Buy"):FireServer("SkiMask", 50)
+task.wait(0.5)
+
+print("[Init] Initial sequence finished.")
+
+-- ========== Chop Logic ==========
+local selectedCar = nil
+local selectedDisplay = nil
+
+local function chopCar(carInstance, displayName)
+    if not carInstance then return end
+    print("[Chop] Starting chop on:", displayName)
+
+    -- Teleport to DriveSeat
+    local driveSeat = carInstance:FindFirstChild("DriveSeat")
+    if driveSeat then
+        local rootPart = waitForCharacter():FindFirstChild("HumanoidRootPart")
+        if rootPart then
+            rootPart.CFrame = driveSeat.CFrame + Vector3.new(0, 3, 0)
+        end
+    end
+    task.wait(0.8)
+
+    -- Fire ProPad 5 times
+    local proPadRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ProPad")
+    for i = 1, 5 do
+        proPadRemote:FireServer(carInstance, true)
+        task.wait(0.2)
+    end
+
+    task.wait(13)  -- Wait as requested
+
+    -- Delete wheels
+    local wheels = carInstance:FindFirstChild("Wheels")
+    if wheels then
+        for _, name in {"FL", "FR", "RL", "RR"} do
+            local wheel = wheels:FindFirstChild(name)
+            if wheel then wheel:Destroy() end
+        end
+        print("[Chop] Wheels deleted")
+    end
+
+    -- Final teleport + anchor 20 seconds
+    local finalRoot = waitForCharacter():FindFirstChild("HumanoidRootPart")
+    if finalRoot then
+        finalRoot.CFrame = CFrame.new(1096, 70, 608)
+        task.wait(0.1)
+        finalRoot.Anchored = true
+        print("[Chop] Anchored at safe spot for 20 seconds")
+        task.wait(20)
+        finalRoot.Anchored = false
+        print("[Chop] Unanchored")
+    end
+
+    print("[Chop] Finished on", displayName)
+end
+
+-- ========== Iris GUI ==========
+local Iris = loadstring(game:HttpGet("https://raw.githubusercontent.com/x0581/Iris-Exploit-Bundle/main/bundle.lua"))().Init(game.CoreGui)
+Iris.UpdateGlobalConfig(Iris.TemplateConfig.colorDark)
+
+Iris:Connect(function()
+    Iris.Window({"Car Chopper"}, {size = Iris.State(Vector2.new(380, 520))})
+
+        Iris.Text({"Select Car to Chop:"})
+
+        Iris.Tree({"Available Cars"})
+            for _, car in ipairs(Workspace.Vehicles:GetChildren()) do
+                if car.Name:find("'s Car") then
+                    local carType = car:GetAttribute("CarType") or "Unknown"
+                    local display = car.Name .. " - " .. carType
+
+                    if Iris.Button({display}).clicked then
+                        selectedCar = car
+                        selectedDisplay = display
+                        print("Selected car:", display)
+                    end
+
+                    if selectedDisplay == display then
+                        Iris.SameLine()
+                        Iris.Text({" ✓ Selected"})
+                    end
+                end
+            end
+        Iris.End()
+
+        Iris.Separator()
+
+        if Iris.Button({"🔪 Chop Selected Car"}).clicked and selectedCar then
+            chopCar(selectedCar, selectedDisplay)
+        elseif Iris.Button({"🔪 Chop Selected Car"}).clicked then
+            print("No car selected!")
+        end
+
+        if Iris.Button({"Refresh Car List"}).clicked then
+            print("Car list refreshed")
+        end
+
+        Iris.Text({"Selected: " .. (selectedDisplay or "None")})
+        Iris.Text({"Inventory Protection: ACTIVE"})
+
+    Iris.End()
+end)
+
+print("Car Chopper script loaded!")
+print("Withdraw, respawn, gunstore, and skimas completed.")
+print("Select a car and click 'Chop Selected Car'.")
