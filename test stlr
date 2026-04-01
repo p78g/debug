@@ -1,8 +1,7 @@
 --[[
-    Roblox Execution Script with Fallback GUI
-    - If Iris is installed, uses it; otherwise uses a simple ScreenGui.
-    - Proximity prompt fixed: moves player to exact prompt location.
-    - Orbit stops with teleport high, wait 0.2s, then anchor.
+    Roblox Execution Script
+    - Fixed: GUI now appears reliably (waits for PlayerGui, uses proper sizing and ZIndex)
+    - Proximity prompt works, but mounting scooter may disable inventory (game behavior)
 --]]
 
 local Players = game:GetService("Players")
@@ -53,7 +52,7 @@ local function teleportTo(x, y, z)
 end
 
 local function holdScooterPrompt()
-    -- Locate the scooter and prompt with better search
+    -- Locate the scooter and prompt
     local scooter = safeFind(workspace, {"Map", "Scooters", "Scooter1"})
     if not scooter then
         warn("[Proximity] Scooter not found")
@@ -69,7 +68,7 @@ local function holdScooterPrompt()
         return
     end
 
-    -- Get the part that contains the prompt (the prompt's parent should be a BasePart)
+    -- Get the part that contains the prompt
     local promptParent = prompt.Parent
     local targetPart = promptParent:IsA("BasePart") and promptParent or promptParent:FindFirstChildWhichIsA("BasePart")
     if not targetPart then
@@ -214,7 +213,11 @@ local function startOrbit(targetPlayer)
     end)
 end
 
--- ========== GUI Setup (Iris if available, otherwise custom) ==========
+-- ========== GUI Setup ==========
+-- Wait for PlayerGui to exist before creating GUI
+local playerGui = localPlayer:WaitForChild("PlayerGui")
+
+-- Try to load Iris
 local Iris = nil
 local irisPaths = {
     ReplicatedStorage:FindFirstChild("Iris"),
@@ -254,7 +257,6 @@ if Iris then
                             end
                         end
                         if selectedPlayerName == player.Name then
-                            -- Highlight the selected row (Iris doesn't have direct, but we can add a checkmark)
                             Iris.SameLine()
                             Iris.Text({"[✓]"})
                         end
@@ -276,18 +278,21 @@ if Iris then
         Iris.End()
     end)
 else
-    -- Fallback to a simple, stable ScreenGui
+    -- Fallback to a simple, stable ScreenGui (ensuring it is visible)
     print("Iris not found. Using fallback ScreenGui.")
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "PlayerSelectorGUI"
-    screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    screenGui.Parent = playerGui
 
+    -- Main frame
     local mainFrame = Instance.new("Frame")
     mainFrame.Size = UDim2.new(0, 300, 0, 450)
     mainFrame.Position = UDim2.new(0, 10, 0, 10)
     mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     mainFrame.BackgroundTransparency = 0.15
     mainFrame.BorderSizePixel = 0
+    mainFrame.ClipsDescendants = false
     mainFrame.Parent = screenGui
 
     local title = Instance.new("TextLabel")
@@ -335,6 +340,7 @@ else
             end
         end
 
+        -- Remove buttons for players that left
         for _, child in ipairs(scrollFrame:GetChildren()) do
             if child:IsA("TextButton") then
                 if not currentPlayers[child.Name] then
@@ -345,6 +351,7 @@ else
             end
         end
 
+        -- Add buttons for new players
         for name, player in pairs(currentPlayers) do
             local button = Instance.new("TextButton")
             button.Name = name
@@ -374,6 +381,7 @@ else
             end)
         end
 
+        -- Update canvas size
         local buttonCount = 0
         for _, child in ipairs(scrollFrame:GetChildren()) do
             if child:IsA("TextButton") then buttonCount = buttonCount + 1 end
@@ -398,6 +406,8 @@ else
             startOrbit(currentTarget)
         end
     end)
+
+    print("Fallback GUI created. It should now be visible.")
 end
 
 -- Initial teleport high and anchor
@@ -411,4 +421,4 @@ local function initialTeleport()
 end
 initialTeleport()
 
-print("Script loaded. GUI ready. Select a player and click Start Orbit.")
+print("Script loaded. GUI should appear. Select a player and click Start Orbit.")
