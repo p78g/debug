@@ -5,7 +5,6 @@
     - Orbit: high speed, 12 stud radius, always below target
     - Stops orbit → teleport high → wait 0.2s → anchor
 --]]
-
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -34,7 +33,7 @@ local function safeFind(instance, path)
 end
 
 -- ========== Inventory spam (counter scooter disable) ==========
--- This function will attempt to re‑enable inventory every 0.5 seconds.
+-- This function will attempt to re-enable inventory every 0.5 seconds.
 -- You may need to adjust the remote name or method based on the actual game.
 local function enableInventorySpam()
     local inventoryRemote = safeFind(ReplicatedStorage, {"Remotes", "Inventory"})
@@ -89,7 +88,6 @@ local function holdScooterPrompt()
         warn("[Proximity] Scooter not found")
         return
     end
-
     local prompt = scooter:FindFirstChild("ProximityPrompt")
     if not prompt then
         prompt = safeFind(scooter, {"Position", "ProximityPrompt"})
@@ -98,21 +96,17 @@ local function holdScooterPrompt()
         warn("[Proximity] Proximity prompt not found on scooter")
         return
     end
-
     local promptParent = prompt.Parent
     local targetPart = promptParent:IsA("BasePart") and promptParent or promptParent:FindFirstChildWhichIsA("BasePart")
     if not targetPart then
         warn("[Proximity] Cannot find a part to move to")
         return
     end
-
     local character = waitForCharacter()
     local rootPart = character:FindFirstChild("HumanoidRootPart")
     if not rootPart then return end
-
     rootPart.CFrame = CFrame.new(targetPart.Position)
     wait(0.2)
-
     print("[Proximity] Holding prompt for 1 second...")
     prompt:InputHoldBegin()
     wait(1)
@@ -159,7 +153,6 @@ local currentTarget = nil
 local orbiting = false
 local orbitConnection = nil
 local selectedPlayerName = nil
-
 local ORBIT_RADIUS = 12
 local VERTICAL_OFFSET = -5
 local ANGULAR_SPEED = 8
@@ -189,9 +182,7 @@ local function startOrbit(targetPlayer)
         orbitConnection:Disconnect()
         orbitConnection = nil
     end
-
     orbiting = true
-
     -- Fire combat remote once
     local targetChar = targetPlayer.Character
     if targetChar then
@@ -201,7 +192,6 @@ local function startOrbit(targetPlayer)
             ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Combat"):FireServer("Hit", humanoid, head)
         end
     end
-
     -- Unanchor local player
     local localChar = localPlayer.Character
     if localChar then
@@ -210,34 +200,27 @@ local function startOrbit(targetPlayer)
             rootPart.Anchored = false
         end
     end
-
     local angle = 0
     local lastUpdate = os.clock()
-
     orbitConnection = RunService.RenderStepped:Connect(function()
         if not orbiting or not targetPlayer or not targetPlayer.Character then
             stopOrbitAndTeleport()
             return
         end
-
         local targetRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
         local localRoot = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
         if not targetRoot or not localRoot then return end
-
         local now = os.clock()
         local dt = math.min(now - lastUpdate, 0.1)
         lastUpdate = now
         angle = angle + ANGULAR_SPEED * dt
-
         local offsetX = ORBIT_RADIUS * math.cos(angle)
         local offsetZ = ORBIT_RADIUS * math.sin(angle)
         local targetPos = targetRoot.Position
         local newPos = targetPos + Vector3.new(offsetX, VERTICAL_OFFSET, offsetZ)
-
         if newPos.Y > targetPos.Y then
             newPos = Vector3.new(newPos.X, targetPos.Y - 0.5, newPos.Z)
         end
-
         localRoot.CFrame = CFrame.new(newPos)
     end)
 end
@@ -246,13 +229,14 @@ end
 local Iris = loadstring(game:HttpGet("https://raw.githubusercontent.com/x0581/Iris-Exploit-Bundle/main/bundle.lua"))().Init(game.CoreGui)
 
 -- Optional: style Iris (use a nicer theme)
-Iris.UpdateGlobalConfig(Iris.TemplateConfig.colorDark)  -- or colorLight
+Iris.UpdateGlobalConfig(Iris.TemplateConfig.colorDark) -- or colorLight
 
 -- Connect the GUI loop
 Iris:Connect(function()
     local windowOpen = Iris.State(true)
     local windowSize = Iris.State(Vector2.new(320, 480))
     Iris.Window({"Player Orbit Control"}, {open = windowOpen, size = windowSize})
+        
         -- Player list with scrolling
         Iris.BeginChild({"playerList"}, {size = Vector2.new(0, 300)})
             local players = Players:GetPlayers()
@@ -271,12 +255,12 @@ Iris:Connect(function()
                     end
                     if selectedPlayerName == player.Name then
                         Iris.SameLine()
-                        Iris.Text({" ✓"})  -- visual indicator
+                        Iris.Text({" ✓"}) -- visual indicator
                     end
                 end
             end
         Iris.EndChild()
-
+        
         -- Orbit button
         local buttonText = orbiting and "Stop Orbit" or "Start Orbit"
         if Iris.Button({buttonText}).clicked then
@@ -290,7 +274,7 @@ Iris:Connect(function()
                 end
             end
         end
-
+        
         -- Status info
         if selectedPlayerName then
             Iris.Text({"Selected: " .. selectedPlayerName})
@@ -298,6 +282,7 @@ Iris:Connect(function()
             Iris.Text({"No target selected"})
         end
         Iris.Text({"Inventory spam is running"})
+        
     Iris.End()
 end)
 
@@ -310,6 +295,7 @@ local function initialTeleport()
         root.Anchored = true
     end
 end
+
 initialTeleport()
 
 print("Script loaded. Inventory spam active. GUI should appear. Select a player and click Start Orbit.")
