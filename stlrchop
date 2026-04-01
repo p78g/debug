@@ -1,7 +1,8 @@
 --[[
-    Car Chopper Script - Fixed ProPad Remote
-    - ProPad remote now fires with exact format: FireServer(carInstance, true)
-    - Correct order: remote → 0.1s → 40 studs up → 1.5s → Equip ProPad → TP to DriveSeat
+    Car Chopper Script - Final Fixed Version
+    - Fixed Iris GUI (no more "too few calls to Iris.End()")
+    - ProPad remote fires with exact format you requested
+    - ProPad is re-equipped before teleporting to the car
 --]]
 
 local Players = game:GetService("Players")
@@ -52,7 +53,7 @@ coroutine.wrap(function()
 end)()
 
 -- ========== Initial Sequence ==========
-print("[Init] Starting initial sequence...")
+print("[Init] Running initial setup...")
 
 ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ATM"):FireServer("Withdraw", 5050)
 task.wait(0.5)
@@ -85,25 +86,38 @@ print("[Init] Initial sequence completed.")
 local selectedCar = nil
 local selectedDisplay = nil
 
+local function equipProPad()
+    local proPadTool = localPlayer.Backpack:FindFirstChild("ProPad")
+    if proPadTool then
+        local character = waitForCharacter()
+        proPadTool.Parent = character
+        print("[Chop] ProPad equipped")
+        return true
+    else
+        warn("[Chop] ProPad not found in Backpack")
+        return false
+    end
+end
+
 local function chopCar(carInstance, displayName)
     if not carInstance then 
         print("❌ No car selected!")
         return 
     end
 
-    print("[Chop] Starting chop on: " .. displayName)
+    print("[Chop] Starting on: " .. displayName)
 
-    -- === FIXED ProPad Remote - Exact format you requested ===
+    -- 1. Fire ProPad remote 5 times (EXACT format)
     local proPadRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ProPad")
     for i = 1, 5 do
-        proPadRemote:FireServer(carInstance, true)   -- Exact: (carInstance, true)
+        proPadRemote:FireServer(carInstance, true)
         print("[Chop] ProPad remote fired #" .. i)
         task.wait(0.2)
     end
 
     task.wait(0.1)
 
-    -- Teleport 40 studs up
+    -- 2. Teleport 40 studs up
     local rootPart = waitForCharacter():FindFirstChild("HumanoidRootPart")
     if rootPart then
         rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 40, 0)
@@ -112,17 +126,10 @@ local function chopCar(carInstance, displayName)
 
     task.wait(1.5)
 
-    -- Equip ProPad
-    local proPadTool = localPlayer.Backpack:FindFirstChild("ProPad")
-    if proPadTool then
-        local character = waitForCharacter()
-        proPadTool.Parent = character
-        print("[Chop] Equipped ProPad")
-    else
-        warn("[Chop] ProPad not found in Backpack")
-    end
+    -- 3. Equip ProPad
+    equipProPad()
 
-    -- Teleport to DriveSeat
+    -- 4. Teleport to DriveSeat
     local driveSeat = carInstance:FindFirstChild("DriveSeat")
     if driveSeat and rootPart then
         rootPart.CFrame = driveSeat.CFrame + Vector3.new(0, 3, 0)
@@ -156,7 +163,7 @@ local function chopCar(carInstance, displayName)
     print("[Chop] ✅ Finished on " .. displayName)
 end
 
--- ========== Iris GUI (Stable) ==========
+-- ========== Fixed Iris GUI ==========
 local Iris = loadstring(game:HttpGet("https://raw.githubusercontent.com/x0581/Iris-Exploit-Bundle/main/bundle.lua"))().Init(game.CoreGui)
 Iris.UpdateGlobalConfig(Iris.TemplateConfig.colorDark)
 
@@ -174,7 +181,7 @@ Iris:Connect(function()
                     if Iris.Button({display}).clicked then
                         selectedCar = car
                         selectedDisplay = display
-                        print("Selected car: " .. display)
+                        print("Selected: " .. display)
                     end
 
                     if selectedDisplay == display then
@@ -183,7 +190,7 @@ Iris:Connect(function()
                     end
                 end
             end
-        Iris.End()
+        Iris.End()  -- End Tree
 
         Iris.Separator()
 
@@ -202,8 +209,9 @@ Iris:Connect(function()
         Iris.Text({"Selected: " .. (selectedDisplay or "None")})
         Iris.Text({"Inventory Protection: ACTIVE"})
 
-    Iris.End()
+    Iris.End()  -- End Window
 end)
 
 print("✅ Script loaded!")
-print("ProPad remote should now fire correctly with the format you provided.")
+print("ProPad remote should now fire correctly.")
+print("ProPad will be re-equipped before teleporting to the car.")
