@@ -1,9 +1,7 @@
 --[[
-    Fixed Iris GUI + Improved Scooter Sequence
-    - Proper Iris Exploit Bundle API usage
-    - Player list now shows correctly with buttons
-    - Teleport → Anchor briefly → Hold prompt → Wait 2s → Unanchor
-    - Orbit logic fully preserved
+    Fixed Iris GUI + Reliable Scooter Proximity Prompt
+    - Player list now shows names and properly detects button clicks
+    - Improved scooter hold sequence (teleport + anchor + reliable prompt fire)
 --]]
 
 local Players = game:GetService("Players")
@@ -12,44 +10,38 @@ local RunService = game:GetService("RunService")
 local localPlayer = Players.LocalPlayer
 local playerName = localPlayer.Name
 
--- ========== Helper functions ==========
+-- ========== Helpers ==========
 local function waitForCharacter()
-    local character = localPlayer.Character
-    if not character or character.Parent == nil then
-        character = localPlayer.CharacterAdded:Wait()
+    local char = localPlayer.Character
+    if not char or not char.Parent then
+        char = localPlayer.CharacterAdded:Wait()
     end
-    return character
+    return char
 end
 
 local function safeFind(instance, path)
     if type(path) == "string" then path = path:split(".") end
     local current = instance
-    for _, part in ipairs(path) do
+    for _, v in ipairs(path) do
         if not current then return nil end
-        current = current:FindFirstChild(part)
+        current = current:FindFirstChild(v)
     end
     return current
 end
 
--- ========== Inventory spam ==========
+-- ========== Inventory Spam ==========
 local function enableInventorySpam()
-    local inventoryRemote = safeFind(ReplicatedStorage, {"Remotes", "Inventory"}) or safeFind(ReplicatedStorage, {"Inventory", "Enable"})
+    local invRemote = safeFind(ReplicatedStorage, {"Remotes", "Inventory"}) or safeFind(ReplicatedStorage, {"Inventory", "Enable"})
     while true do
         task.wait(0.5)
-        if inventoryRemote then
-            pcall(function()
-                inventoryRemote:FireServer("EnableInventory")
-            end)
-        end
-        local humanoid = localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid")
-        if humanoid then
-            humanoid:SetAttribute("InventoryEnabled", true)
-        end
+        if invRemote then pcall(function() invRemote:FireServer("EnableInventory") end) end
+        local hum = localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid")
+        if hum then hum:SetAttribute("InventoryEnabled", true) end
     end
 end
 coroutine.wrap(enableInventorySpam)()
 
--- ========== Initial actions ==========
+-- ========== Initial Actions ==========
 local function respawn()
     ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ControllerRemote"):FireServer("/respawn")
 end
@@ -63,27 +55,38 @@ local function teleportTo(x, y, z)
     if root then root.CFrame = CFrame.new(x, y, z) end
 end
 
+-- ========== Improved Scooter Prompt ==========
 local function holdScooterPrompt()
     local scooter = safeFind(workspace, {"Map", "Scooters", "Scooter1"})
-    if not scooter then warn("[Scooter] Not found") return end
+    if not scooter then 
+        warn("[Scooter] Scooter1 not found in workspace.Map.Scooters")
+        return 
+    end
     
     local prompt = scooter:FindFirstChild("ProximityPrompt") or safeFind(scooter, {"Position", "ProximityPrompt"})
-    if not prompt then warn("[Scooter] ProximityPrompt not found") return end
+    if not prompt then 
+        warn("[Scooter] ProximityPrompt not found")
+        return 
+    end
     
     local targetPart = prompt.Parent:IsA("BasePart") and prompt.Parent or prompt.Parent:FindFirstChildWhichIsA("BasePart")
-    if not targetPart then warn("[Scooter] No target part") return end
+    if not targetPart then 
+        warn("[Scooter] No BasePart found for prompt")
+        return 
+    end
     
     local root = waitForCharacter():FindFirstChild("HumanoidRootPart")
     if not root then return end
     
-    root.CFrame = CFrame.new(targetPart.Position + Vector3.new(0, 3, 0)) -- slightly above
-    task.wait(0.3)
+    -- Teleport very close + slightly above
+    root.CFrame = CFrame.new(targetPart.Position + Vector3.new(0, 4, 0))
+    task.wait(0.4)
     
-    print("[Scooter] Holding prompt...")
+    print("[Scooter] Attempting to hold prompt...")
     prompt:InputHoldBegin()
-    task.wait(1)
+    task.wait(1.2)  -- Hold a bit longer for reliability
     prompt:InputHoldEnd()
-    print("[Scooter] Prompt released")
+    print("[Scooter] Prompt hold completed")
 end
 
 local function deleteCarWheels()
@@ -92,8 +95,8 @@ local function deleteCarWheels()
     local wheels = car:FindFirstChild("Wheels")
     if wheels then
         for _, name in {"FL", "FR", "RL", "RR"} do
-            local wheel = wheels:FindFirstChild(name)
-            if wheel then wheel:Destroy() end
+            local w = wheels:FindFirstChild(name)
+            if w then w:Destroy() end
         end
     end
 end
@@ -108,7 +111,7 @@ local function modifyWeight()
     end
 end
 
--- ========== Orbit logic (unchanged) ==========
+-- ========== Orbit Logic (unchanged) ==========
 local currentTarget = nil
 local orbiting = false
 local orbitConnection = nil
@@ -119,10 +122,7 @@ local VERTICAL_OFFSET = -5
 local ANGULAR_SPEED = 8
 
 local function stopOrbitAndTeleport()
-    if orbitConnection then
-        orbitConnection:Disconnect()
-        orbitConnection = nil
-    end
+    if orbitConnection then orbitConnection:Disconnect() orbitConnection = nil end
     orbiting = false
     local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
     if root then
@@ -135,12 +135,11 @@ end
 local function startOrbit(targetPlayer)
     if not targetPlayer then return end
     if orbitConnection then orbitConnection:Disconnect() end
-    
     orbiting = true
-    selectedPlayerName = targetPlayer.Name
     currentTarget = targetPlayer
+    selectedPlayerName = targetPlayer.Name
     
-    -- Initial hit
+    -- Initial combat hit
     local tChar = targetPlayer.Character
     if tChar then
         local hum = tChar:FindFirstChild("Humanoid")
@@ -167,50 +166,56 @@ local function startOrbit(targetPlayer)
         
         local dt = math.min(os.clock() - lastUpdate, 0.1)
         lastUpdate = os.clock()
-        angle += ANGULAR_SPEED * dt
+        angle = angle + ANGULAR_SPEED * dt
         
         local offset = Vector3.new(ORBIT_RADIUS * math.cos(angle), VERTICAL_OFFSET, ORBIT_RADIUS * math.sin(angle))
         local newPos = tRoot.Position + offset
-        if newPos.Y > tRoot.Position.Y then
-            newPos = Vector3.new(newPos.X, tRoot.Position.Y - 0.5, newPos.Z)
-        end
+        if newPos.Y > tRoot.Position.Y then newPos = Vector3.new(newPos.X, tRoot.Position.Y - 0.5, newPos.Z) end
         lRoot.CFrame = CFrame.new(newPos)
     end)
 end
 
--- ========== Iris GUI (Fixed) ==========
+-- ========== Fixed Iris GUI ==========
 local Iris = loadstring(game:HttpGet("https://raw.githubusercontent.com/x0581/Iris-Exploit-Bundle/main/bundle.lua"))().Init(game.CoreGui)
-
 Iris.UpdateGlobalConfig(Iris.TemplateConfig.colorDark)
 
+local playerButtons = {}  -- Store button references for click detection
+
 Iris:Connect(function()
-    Iris.Window({"Player Orbit Control"}, {size = Iris.State(Vector2.new(340, 520))})
+    Iris.Window({"Player Orbit Control"}, {size = Iris.State(Vector2.new(360, 550))})
         
-        -- Player List
-        Iris.Text({"Select a player:"})
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player ~= localPlayer then
-                local clicked = Iris.Button({player.Name}).clicked
-                if clicked then
-                    if orbiting then stopOrbitAndTeleport() end
-                    currentTarget = player
-                    selectedPlayerName = player.Name
-                    local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-                    if root then root.Anchored = false end
-                end
+        Iris.Text({"Select Target Player:"})
+        
+        -- Refresh player list every frame
+        playerButtons = {}
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= localPlayer then
+                local btn = Iris.Button({plr.Name})
+                playerButtons[plr] = btn
                 
-                if selectedPlayerName == player.Name then
+                if selectedPlayerName == plr.Name then
                     Iris.SameLine()
                     Iris.Text({" ✓ Selected"})
                 end
             end
         end
         
+        -- Check clicks after creating buttons
+        for plr, btn in pairs(playerButtons) do
+            if btn.clicked then
+                if orbiting then stopOrbitAndTeleport() end
+                currentTarget = plr
+                selectedPlayerName = plr.Name
+                local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if root then root.Anchored = false end
+                print("Selected:", plr.Name)
+            end
+        end
+        
         Iris.Separator()
         
-        -- Orbit Control
-        local btnText = orbiting and "Stop Orbit" or "Start Orbit"
-        if Iris.Button({btnText}).clicked then
+        local orbitBtnText = orbiting and "Stop Orbit" or "Start Orbit"
+        if Iris.Button({orbitBtnText}).clicked then
             if not currentTarget then
                 print("No target selected!")
             elseif orbiting then
@@ -221,15 +226,12 @@ Iris:Connect(function()
         end
         
         if Iris.Button({"Refresh Player List"}).clicked then
-            -- Just forces re-render
+            print("Player list refreshed")
         end
         
-        -- Status
         Iris.Text({"Selected: " .. (selectedPlayerName or "None")})
-        if orbiting then
-            Iris.Text({"Status: Orbiting active"})
-        end
-        Iris.Text({"Inventory spam: Active"})
+        if orbiting then Iris.Text({"Status: Orbiting"}) end
+        Iris.Text({"Inventory spam: Running"})
         
     Iris.End()
 end)
@@ -239,11 +241,11 @@ respawn()
 task.wait(1.6)
 buySkiMask()
 teleportTo(541, 52, -93)
-task.wait(0.5)
+task.wait(0.6)
 
--- Improved scooter sequence
+-- Scooter sequence with anchoring
 local root = waitForCharacter():FindFirstChild("HumanoidRootPart")
-if root then root.Anchored = true end   -- anchor while interacting
+if root then root.Anchored = true end
 
 holdScooterPrompt()
 task.wait(2)
@@ -254,15 +256,12 @@ if root then root.Anchored = false end
 deleteCarWheels()
 modifyWeight()
 
--- Final high teleport + anchor (as original)
-local function initialTeleport()
-    local r = waitForCharacter():FindFirstChild("HumanoidRootPart")
-    if r then
-        r.CFrame = CFrame.new(r.Position.X, 1000, r.Position.Z)
-        r.Anchored = true
-    end
+-- Final high anchor
+local finalRoot = waitForCharacter():FindFirstChild("HumanoidRootPart")
+if finalRoot then
+    finalRoot.CFrame = CFrame.new(finalRoot.Position.X, 1000, finalRoot.Position.Z)
+    finalRoot.Anchored = true
 end
-initialTeleport()
 
-print("Script loaded successfully! GUI should now show player names and buttons.")
-print("Scooter sequence completed - you are unanchored and ready to orbit.")
+print("Script loaded! GUI should now show player names and respond to clicks.")
+print("Scooter prompt sequence completed.")
