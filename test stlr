@@ -1,13 +1,15 @@
 --[[
-    Stronger Inventory Spam + All Previous Fixes
-    - Very aggressive inventory re-enable (every 0.1s)
-    - Multiple remote paths and methods tried
-    - Prevents inventory disable when entering the car
+    Final Fixed Version
+    - Infinite Yield style inventory enable (bypasses car disable)
+    - Continuous Combat "Hit" remote during orbit
+    - Anchor delay after high teleport
+    - Dropdown player selection
 --]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local StarterGui = game:GetService("StarterGui")
 local localPlayer = Players.LocalPlayer
 local playerName = localPlayer.Name
 
@@ -30,50 +32,39 @@ local function safeFind(instance, path)
     return current
 end
 
--- ========== STRONGER Inventory Spam ==========
-local function enableInventorySpam()
-    -- Try to find common inventory remotes
-    local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage
-    local possibleRemotes = {
-        safeFind(remotesFolder, "Inventory"),
-        safeFind(remotesFolder, {"Inventory", "Enable"}),
-        safeFind(remotesFolder, "ToggleInventory"),
-        safeFind(ReplicatedStorage, {"Inventory", "Remote"}),
-        safeFind(ReplicatedStorage, "EnableInventory")
-    }
-
-    while true do
-        task.wait(0.1)  -- Much faster spam
-
-        for _, remote in ipairs(possibleRemotes) do
-            if remote and (remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction")) then
-                pcall(function()
-                    remote:FireServer("EnableInventory")
-                    remote:FireServer(true)
-                    remote:FireServer("Enable")
-                end)
-            end
-        end
-
-        -- Direct attribute / property spam on Humanoid and Player
-        local character = localPlayer.Character
-        if character then
-            local humanoid = character:FindFirstChild("Humanoid")
-            if humanoid then
-                humanoid:SetAttribute("InventoryEnabled", true)
-                humanoid:SetAttribute("CanOpenInventory", true)
-                pcall(function() humanoid:FindFirstChild("InventoryEnabled").Value = true end)
-            end
-        end
-
-        -- Also try on LocalPlayer
-        pcall(function()
-            localPlayer:SetAttribute("InventoryEnabled", true)
-        end)
-    end
+-- ========== Infinite Yield Style Inventory Enable ==========
+local function enableInventory()
+    pcall(function()
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, true)
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Inventory, true)
+    end)
+    
+    -- Refresh trick used in IY
+    pcall(function()
+        StarterGui:SetCore("ResetButtonCallback", true)
+    end)
 end
 
-coroutine.wrap(enableInventorySpam)()
+local function strongInventorySpam()
+    while true do
+        task.wait(0.15)
+        
+        enableInventory()
+        
+        -- Extra attribute spam
+        local char = localPlayer.Character
+        if char then
+            local hum = char:FindFirstChild("Humanoid")
+            if hum then
+                hum:SetAttribute("InventoryEnabled", true)
+                hum:SetAttribute("CanOpenInventory", true)
+            end
+        end
+        
+        localPlayer:SetAttribute("InventoryEnabled", true)
+    end
+end
+coroutine.wrap(strongInventorySpam)()
 
 -- ========== Initial Actions ==========
 local function respawn()
@@ -134,10 +125,11 @@ local function modifyWeight()
     end
 end
 
--- ========== Orbit Logic with Anchor Delay ==========
+-- ========== Orbit Logic with Continuous Hit Remote ==========
 local currentTarget = nil
 local orbiting = false
 local orbitConnection = nil
+local hitConnection = nil
 local selectedPlayerName = nil
 
 local ORBIT_RADIUS = 12
@@ -146,10 +138,9 @@ local ANGULAR_SPEED = 8
 local ANCHOR_DELAY = 0.5
 
 local function stopOrbitAndTeleport()
-    if orbitConnection then
-        orbitConnection:Disconnect()
-        orbitConnection = nil
-    end
+    if orbitConnection then orbitConnection:Disconnect() orbitConnection = nil end
+    if hitConnection then hitConnection:Disconnect() hitConnection = nil end
+    
     orbiting = false
     
     local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -164,24 +155,27 @@ end
 
 local function startOrbit(targetPlayer)
     if not targetPlayer then return end
-    if orbitConnection then orbitConnection:Disconnect() end
+    stopOrbitAndTeleport() -- clean previous
     
     orbiting = true
     currentTarget = targetPlayer
     selectedPlayerName = targetPlayer.Name
     
-    local tChar = targetPlayer.Character
-    if tChar then
+    local lRoot = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if lRoot then lRoot.Anchored = false end
+    
+    -- Continuous Hit Remote (every 0.3s)
+    hitConnection = RunService.Heartbeat:Connect(function()
+        if not orbiting or not targetPlayer.Character then return end
+        local tChar = targetPlayer.Character
         local hum = tChar:FindFirstChild("Humanoid")
         local head = tChar:FindFirstChild("Head")
         if hum and head then
             ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Combat"):FireServer("Hit", hum, head)
         end
-    end
+    end)
     
-    local lRoot = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if lRoot then lRoot.Anchored = false end
-    
+    -- Orbit movement
     local angle = 0
     local lastUpdate = os.clock()
     
@@ -226,7 +220,7 @@ Iris:Connect(function()
                         selectedPlayerName = plr.Name
                         local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
                         if root then root.Anchored = false end
-                        print("Selected player:", plr.Name)
+                        print("Selected:", plr.Name)
                     end
                     
                     if selectedPlayerName == plr.Name then
@@ -254,10 +248,9 @@ Iris:Connect(function()
             print("Player list refreshed")
         end
         
-        -- Status
         Iris.Text({"Selected: " .. (selectedPlayerName or "None")})
-        if orbiting then Iris.Text({"Status: Orbiting active"}) end
-        Iris.Text({"Inventory Protection: ACTIVE (anti-disable)"})
+        if orbiting then Iris.Text({"Status: Orbiting + Hitting"}) end
+        Iris.Text({"Inventory Protection: ACTIVE (IY Style)"})
         
     Iris.End()
 end)
@@ -280,7 +273,6 @@ if root then root.Anchored = false end
 deleteCarWheels()
 modifyWeight()
 
--- Final high anchor with delay
 local finalRoot = waitForCharacter():FindFirstChild("HumanoidRootPart")
 if finalRoot then
     finalRoot.CFrame = CFrame.new(finalRoot.Position.X, 1000, finalRoot.Position.Z)
@@ -288,5 +280,6 @@ if finalRoot then
     finalRoot.Anchored = true
 end
 
-print("Script loaded with strong inventory protection!")
-print("Inventory spam is now running very aggressively to keep your inventory enabled.")
+print("Script loaded successfully!")
+print("Inventory protection (Infinite Yield style) is now active.")
+print("Combat Hit remote will fire continuously while orbiting.")
