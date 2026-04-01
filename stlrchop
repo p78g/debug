@@ -1,8 +1,7 @@
 --[[
-    Car Chopper Script - Updated with ProPad Equip
-    - ATM Withdraw + Respawn + GunStore + Buy SkiMask
-    - Before chopping: Teleport 30 studs up → Wait 3s → Equip ProPad → Teleport to DriveSeat
-    - No delay between equipping ProPad and teleporting to car
+    Car Chopper Script - Updated
+    - Teleport 40 studs up + 3.5 second delay before equipping ProPad
+    - Then equip ProPad and immediately teleport to DriveSeat
 --]]
 
 local Players = game:GetService("Players")
@@ -100,16 +99,17 @@ local function chopCar(carInstance, displayName)
         task.wait(0.2)
     end
 
-    -- NEW SEQUENCE:
-    -- 1. Teleport 30 studs up
+    -- Teleport 40 studs up
     local rootPart = waitForCharacter():FindFirstChild("HumanoidRootPart")
     if rootPart then
-        rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 30, 0)
-        print("[Chop] Teleported 30 studs up")
+        rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 40, 0)
+        print("[Chop] Teleported 40 studs up")
     end
-    task.wait(3)
+    
+    -- 3.5 second delay
+    task.wait(3.5)
 
-    -- 2. Equip ProPad from Backpack
+    -- Equip ProPad from Backpack
     local proPadTool = localPlayer.Backpack:FindFirstChild("ProPad")
     if proPadTool then
         local character = waitForCharacter()
@@ -119,7 +119,7 @@ local function chopCar(carInstance, displayName)
         warn("[Chop] ProPad not found in Backpack")
     end
 
-    -- 3. Teleport to DriveSeat (no delay)
+    -- Immediately teleport to DriveSeat (no cooldown)
     local driveSeat = carInstance:FindFirstChild("DriveSeat")
     if driveSeat and rootPart then
         rootPart.CFrame = driveSeat.CFrame + Vector3.new(0, 3, 0)
@@ -201,5 +201,5 @@ Iris:Connect(function()
     Iris.End()
 end)
 
-print("Car Chopper script loaded successfully!")
-print("New chop sequence: 30 studs up → 3s wait → Equip ProPad → Teleport to DriveSeat")
+print("Car Chopper script loaded!")
+print("Chop sequence updated: 40 studs up → 3.5s wait → Equip ProPad → Teleport to DriveSeat")
