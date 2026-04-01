@@ -1,8 +1,8 @@
 --[[
-    Fixed Sky Teleport + Anchor Delay
-    - After stopping orbit: teleport high → wait 0.5s → anchor (prevents being killed at car spawn)
-    - Dropdown-style player selection with Tree
-    - Clear Start/Stop Orbit button
+    Stronger Inventory Spam + All Previous Fixes
+    - Very aggressive inventory re-enable (every 0.1s)
+    - Multiple remote paths and methods tried
+    - Prevents inventory disable when entering the car
 --]]
 
 local Players = game:GetService("Players")
@@ -30,16 +30,49 @@ local function safeFind(instance, path)
     return current
 end
 
--- ========== Inventory Spam ==========
+-- ========== STRONGER Inventory Spam ==========
 local function enableInventorySpam()
-    local invRemote = safeFind(ReplicatedStorage, {"Remotes", "Inventory"}) or safeFind(ReplicatedStorage, {"Inventory", "Enable"})
+    -- Try to find common inventory remotes
+    local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage
+    local possibleRemotes = {
+        safeFind(remotesFolder, "Inventory"),
+        safeFind(remotesFolder, {"Inventory", "Enable"}),
+        safeFind(remotesFolder, "ToggleInventory"),
+        safeFind(ReplicatedStorage, {"Inventory", "Remote"}),
+        safeFind(ReplicatedStorage, "EnableInventory")
+    }
+
     while true do
-        task.wait(0.5)
-        if invRemote then pcall(function() invRemote:FireServer("EnableInventory") end) end
-        local hum = localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid")
-        if hum then hum:SetAttribute("InventoryEnabled", true) end
+        task.wait(0.1)  -- Much faster spam
+
+        for _, remote in ipairs(possibleRemotes) do
+            if remote and (remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction")) then
+                pcall(function()
+                    remote:FireServer("EnableInventory")
+                    remote:FireServer(true)
+                    remote:FireServer("Enable")
+                end)
+            end
+        end
+
+        -- Direct attribute / property spam on Humanoid and Player
+        local character = localPlayer.Character
+        if character then
+            local humanoid = character:FindFirstChild("Humanoid")
+            if humanoid then
+                humanoid:SetAttribute("InventoryEnabled", true)
+                humanoid:SetAttribute("CanOpenInventory", true)
+                pcall(function() humanoid:FindFirstChild("InventoryEnabled").Value = true end)
+            end
+        end
+
+        -- Also try on LocalPlayer
+        pcall(function()
+            localPlayer:SetAttribute("InventoryEnabled", true)
+        end)
     end
 end
+
 coroutine.wrap(enableInventorySpam)()
 
 -- ========== Initial Actions ==========
@@ -101,7 +134,7 @@ local function modifyWeight()
     end
 end
 
--- ========== Orbit Logic with Improved Stop ==========
+-- ========== Orbit Logic with Anchor Delay ==========
 local currentTarget = nil
 local orbiting = false
 local orbitConnection = nil
@@ -110,7 +143,7 @@ local selectedPlayerName = nil
 local ORBIT_RADIUS = 12
 local VERTICAL_OFFSET = -5
 local ANGULAR_SPEED = 8
-local ANCHOR_DELAY = 0.5  -- ← New: Delay before anchoring after going high
+local ANCHOR_DELAY = 0.5
 
 local function stopOrbitAndTeleport()
     if orbitConnection then
@@ -121,13 +154,9 @@ local function stopOrbitAndTeleport()
     
     local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
     if root then
-        -- Teleport high up
         root.CFrame = CFrame.new(root.Position.X, 1000, root.Position.Z)
         print("[Orbit] Teleported high up")
-        
-        -- Wait before anchoring (gives car time to spawn safely)
         task.wait(ANCHOR_DELAY)
-        
         root.Anchored = true
         print("[Orbit] Anchored after delay")
     end
@@ -141,7 +170,6 @@ local function startOrbit(targetPlayer)
     currentTarget = targetPlayer
     selectedPlayerName = targetPlayer.Name
     
-    -- Initial hit
     local tChar = targetPlayer.Character
     if tChar then
         local hum = tChar:FindFirstChild("Humanoid")
@@ -188,7 +216,6 @@ Iris:Connect(function()
         
         Iris.Text({"Select Target Player:"})
         
-        -- Dropdown-style list
         Iris.Tree({"Players List"})
             for _, plr in ipairs(Players:GetPlayers()) do
                 if plr ~= localPlayer then
@@ -208,11 +235,10 @@ Iris:Connect(function()
                     end
                 end
             end
-        Iris.End()  -- End Tree
+        Iris.End()
         
         Iris.Separator()
         
-        -- Orbit Button
         local orbitText = orbiting and "Stop Orbit" or "Start Orbit"
         if Iris.Button({orbitText}).clicked then
             if not currentTarget then
@@ -230,10 +256,8 @@ Iris:Connect(function()
         
         -- Status
         Iris.Text({"Selected: " .. (selectedPlayerName or "None")})
-        if orbiting then
-            Iris.Text({"Status: Orbiting active"})
-        end
-        Iris.Text({"Inventory spam: Active"})
+        if orbiting then Iris.Text({"Status: Orbiting active"}) end
+        Iris.Text({"Inventory Protection: ACTIVE (anti-disable)"})
         
     Iris.End()
 end)
@@ -260,9 +284,9 @@ modifyWeight()
 local finalRoot = waitForCharacter():FindFirstChild("HumanoidRootPart")
 if finalRoot then
     finalRoot.CFrame = CFrame.new(finalRoot.Position.X, 1000, finalRoot.Position.Z)
-    task.wait(ANCHOR_DELAY)  -- Same delay for consistency
+    task.wait(ANCHOR_DELAY)
     finalRoot.Anchored = true
 end
 
-print("Script loaded! Select a player from 'Players List', then click Start Orbit.")
-print("Anchor delay added after high teleport to avoid spawn kill.")
+print("Script loaded with strong inventory protection!")
+print("Inventory spam is now running very aggressively to keep your inventory enabled.")
