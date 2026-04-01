@@ -107,7 +107,7 @@ local function chopCar(carInstance, displayName)
     end
     
     -- 3.5 second delay
-    task.wait(3.5)
+    task.wait(3.0)
 
     -- Equip ProPad from Backpack
     local proPadTool = localPlayer.Backpack:FindFirstChild("ProPad")
