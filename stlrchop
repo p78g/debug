@@ -1,8 +1,8 @@
 --[[
-    Car Chopper Script - Final Fixed Version
-    - Fixed Iris GUI (no more "too few calls to Iris.End()")
-    - ProPad remote fires with exact format you requested
-    - ProPad is re-equipped before teleporting to the car
+    Car Chopper Script - Fixed Iris + Ragdoll + ProPad Always Equipped
+    - Proper Iris structure (no more End() errors)
+    - ProPad is re-equipped before every teleport to the car
+    - Ragdoll triggered after going up to help bypass teleport anticheat
 --]]
 
 local Players = game:GetService("Players")
@@ -99,6 +99,14 @@ local function equipProPad()
     end
 end
 
+local function triggerRagdoll()
+    local hum = localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid")
+    if hum then
+        hum:ChangeState(Enum.HumanoidStateType.Ragdoll)
+        print("[Chop] Ragdoll triggered to bypass anticheat")
+    end
+end
+
 local function chopCar(carInstance, displayName)
     if not carInstance then 
         print("❌ No car selected!")
@@ -107,7 +115,7 @@ local function chopCar(carInstance, displayName)
 
     print("[Chop] Starting on: " .. displayName)
 
-    -- 1. Fire ProPad remote 5 times (EXACT format)
+    -- 1. Fire ProPad remote 5 times (exact format)
     local proPadRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ProPad")
     for i = 1, 5 do
         proPadRemote:FireServer(carInstance, true)
@@ -117,16 +125,17 @@ local function chopCar(carInstance, displayName)
 
     task.wait(0.1)
 
-    -- 2. Teleport 40 studs up
+    -- 2. Teleport 40 studs up + trigger ragdoll
     local rootPart = waitForCharacter():FindFirstChild("HumanoidRootPart")
     if rootPart then
         rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 40, 0)
         print("[Chop] Teleported 40 studs up")
+        triggerRagdoll()
     end
 
     task.wait(1.5)
 
-    -- 3. Equip ProPad
+    -- 3. Equip ProPad (re-equip every time)
     equipProPad()
 
     -- 4. Teleport to DriveSeat
@@ -134,6 +143,7 @@ local function chopCar(carInstance, displayName)
     if driveSeat and rootPart then
         rootPart.CFrame = driveSeat.CFrame + Vector3.new(0, 3, 0)
         print("[Chop] Teleported to DriveSeat")
+        equipProPad()  -- double-check equip after TP
     end
 
     task.wait(13)
@@ -190,7 +200,7 @@ Iris:Connect(function()
                     end
                 end
             end
-        Iris.End()  -- End Tree
+        Iris.End()   -- End Tree
 
         Iris.Separator()
 
@@ -209,9 +219,9 @@ Iris:Connect(function()
         Iris.Text({"Selected: " .. (selectedDisplay or "None")})
         Iris.Text({"Inventory Protection: ACTIVE"})
 
-    Iris.End()  -- End Window
+    Iris.End()   -- End Window
 end)
 
-print("✅ Script loaded!")
-print("ProPad remote should now fire correctly.")
-print("ProPad will be re-equipped before teleporting to the car.")
+print("✅ Script loaded with fixes!")
+print("ProPad is now re-equipped before every teleport.")
+print("Ragdoll is triggered after going up to help bypass anticheat.")
