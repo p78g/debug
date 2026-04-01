@@ -124,9 +124,9 @@ local orbitConnection = nil
 local hitConnection = nil
 local selectedPlayerName = nil
 
-local ORBIT_RADIUS = 12
-local VERTICAL_OFFSET = -12        -- Under the target (increase to go lower)
-local ANGULAR_SPEED = 8
+local ORBIT_RADIUS = 10
+local VERTICAL_OFFSET = -10        -- Under the target (increase to go lower)
+local ANGULAR_SPEED = 20
 local ANCHOR_DELAY = 0.5
 
 local function stopOrbitAndTeleport()
