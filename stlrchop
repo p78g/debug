@@ -117,7 +117,7 @@ local function chopCar(carInstance, displayName)
         rootPart.CFrame = driveSeat.CFrame + Vector3.new(0, 3, 0)
     end
 
-    task.wait(13)
+    task.wait(11)
 
     -- Delete wheels
     local wheels = carInstance:FindFirstChild("Wheels")
