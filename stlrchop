@@ -1,13 +1,12 @@
 --[[
-    Car Chopper Script with Iris GUI
-    - ATM Withdraw + Respawn + GunStore prompt + Buy SkiMask on load
-    - Dynamic car list showing "Username's CarType"
-    - Chop button with 0.1s delay after ProPad spam before teleporting to DriveSeat
+    Car Chopper Script - Updated with ProPad Equip
+    - ATM Withdraw + Respawn + GunStore + Buy SkiMask
+    - Before chopping: Teleport 30 studs up → Wait 3s → Equip ProPad → Teleport to DriveSeat
+    - No delay between equipping ProPad and teleporting to car
 --]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
 local Workspace = game:GetService("Workspace")
 
@@ -53,23 +52,20 @@ coroutine.wrap(function()
     end
 end)()
 
--- ========== Initial Sequence (runs once on load) ==========
+-- ========== Initial Sequence ==========
 print("[Init] Starting initial sequence...")
 
--- Withdraw from ATM
 ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ATM"):FireServer("Withdraw", 5050)
 task.wait(0.5)
 
--- Respawn
 ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ControllerRemote"):FireServer("/respawn")
 task.wait(1.6)
 
--- Teleport to GunStore area
 local root = waitForCharacter():FindFirstChild("HumanoidRootPart")
 if root then root.CFrame = CFrame.new(1053, 54, -104) end
 task.wait(0.8)
 
--- Hold GunTable ProximityPrompt
+-- GunStore ProximityPrompt
 local gunPrompt = safeFind(Workspace, {"Map", "GunStore", "GunTable", "ProPad", "Handle", "ProximityPrompt"})
 if gunPrompt then
     local targetPart = gunPrompt.Parent:IsA("BasePart") and gunPrompt.Parent or gunPrompt.Parent:FindFirstChildWhichIsA("BasePart")
@@ -82,11 +78,8 @@ if gunPrompt then
         gunPrompt:InputHoldEnd()
         print("[GunStore] Prompt completed")
     end
-else
-    warn("[GunStore] ProximityPrompt not found")
 end
 
--- Buy SkiMask
 ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Buy"):FireServer("SkiMask", 50)
 task.wait(0.5)
 
@@ -98,7 +91,7 @@ local selectedDisplay = nil
 
 local function chopCar(carInstance, displayName)
     if not carInstance then return end
-    print("[Chop] Starting chop on:", displayName)
+    print("[Chop] Starting on:", displayName)
 
     -- Fire ProPad remote 5 times
     local proPadRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ProPad")
@@ -107,19 +100,31 @@ local function chopCar(carInstance, displayName)
         task.wait(0.2)
     end
 
-    -- NEW: 0.1 second delay after ProPad spam
-    task.wait(0.1)
-
-    -- Teleport to DriveSeat
-    local driveSeat = carInstance:FindFirstChild("DriveSeat")
-    if driveSeat then
-        local rootPart = waitForCharacter():FindFirstChild("HumanoidRootPart")
-        if rootPart then
-            rootPart.CFrame = driveSeat.CFrame + Vector3.new(0, 3, 0)
-            print("[Chop] Teleported to DriveSeat")
-        end
+    -- NEW SEQUENCE:
+    -- 1. Teleport 30 studs up
+    local rootPart = waitForCharacter():FindFirstChild("HumanoidRootPart")
+    if rootPart then
+        rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 30, 0)
+        print("[Chop] Teleported 30 studs up")
     end
-    task.wait(0.8)
+    task.wait(3)
+
+    -- 2. Equip ProPad from Backpack
+    local proPadTool = localPlayer.Backpack:FindFirstChild("ProPad")
+    if proPadTool then
+        local character = waitForCharacter()
+        proPadTool.Parent = character
+        print("[Chop] Equipped ProPad")
+    else
+        warn("[Chop] ProPad not found in Backpack")
+    end
+
+    -- 3. Teleport to DriveSeat (no delay)
+    local driveSeat = carInstance:FindFirstChild("DriveSeat")
+    if driveSeat and rootPart then
+        rootPart.CFrame = driveSeat.CFrame + Vector3.new(0, 3, 0)
+        print("[Chop] Teleported to DriveSeat")
+    end
 
     -- Wait 13 seconds
     task.wait(13)
@@ -134,13 +139,13 @@ local function chopCar(carInstance, displayName)
         print("[Chop] Wheels deleted")
     end
 
-    -- Final teleport + anchor for 20 seconds
+    -- Final safe teleport + 20s anchor
     local finalRoot = waitForCharacter():FindFirstChild("HumanoidRootPart")
     if finalRoot then
         finalRoot.CFrame = CFrame.new(1096, 70, 608)
         task.wait(0.1)
         finalRoot.Anchored = true
-        print("[Chop] Anchored at safe spot for 20 seconds")
+        print("[Chop] Anchored safely for 20 seconds")
         task.wait(20)
         finalRoot.Anchored = false
         print("[Chop] Unanchored")
@@ -167,7 +172,7 @@ Iris:Connect(function()
                     if Iris.Button({display}).clicked then
                         selectedCar = car
                         selectedDisplay = display
-                        print("Selected car:", display)
+                        print("Selected:", display)
                     end
 
                     if selectedDisplay == display then
@@ -196,6 +201,5 @@ Iris:Connect(function()
     Iris.End()
 end)
 
-print("Car Chopper script loaded!")
-print("Withdraw, respawn, gunstore, and skimas completed.")
-print("Select a car and click 'Chop Selected Car'.")
+print("Car Chopper script loaded successfully!")
+print("New chop sequence: 30 studs up → 3s wait → Equip ProPad → Teleport to DriveSeat")
