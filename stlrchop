@@ -1,6 +1,6 @@
 --[[
     Car Chopper Script - Updated
-    - Teleport 40 studs up + 3.5 second delay before equipping ProPad
+    - Teleport 40 studs up + 3 second delay before equipping ProPad
     - Then equip ProPad and immediately teleport to DriveSeat
 --]]
 
@@ -106,8 +106,8 @@ local function chopCar(carInstance, displayName)
         print("[Chop] Teleported 40 studs up")
     end
     
-    -- 3.5 second delay
-    task.wait(2.5)
+    -- 3 second delay (as requested)
+    task.wait(3)
 
     -- Equip ProPad from Backpack
     local proPadTool = localPlayer.Backpack:FindFirstChild("ProPad")
@@ -202,4 +202,4 @@ Iris:Connect(function()
 end)
 
 print("Car Chopper script loaded!")
-print("Chop sequence updated: 40 studs up → 3.5s wait → Equip ProPad → Teleport to DriveSeat")
+print("Chop sequence updated: 40 studs up → 3 second wait → Equip ProPad → Teleport to DriveSeat")
