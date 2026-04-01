@@ -1,30 +1,41 @@
 --[[
     Roblox Execution Script
-    Description: A multi-step script that performs various actions,
-    including remote execution, character manipulation, and a player
-    selection GUI with orbiting functionality.
+    Improved version with stable GUI and proper orbit.
 --]]
 
--- Wait for required services
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
--- Local player
 local localPlayer = Players.LocalPlayer
 local playerName = localPlayer.Name
 
--- Function to ensure character exists and is loaded
+-- ========== Helper functions ==========
 local function waitForCharacter()
     local character = localPlayer.Character
     if not character or character.Parent == nil then
-        localPlayer.CharacterAdded:Wait()
+        character = localPlayer.CharacterAdded:Wait()
     end
-    return localPlayer.Character
+    return character
 end
 
--- Step 1: Fire respawn remote
+local function safeFind(instance, path)
+    -- recursively find child by path (string or table)
+    if type(path) == "string" then
+        path = path:split(".")
+    end
+    local current = instance
+    for _, part in ipairs(path) do
+        if not current then return nil end
+        current = current:FindFirstChild(part)
+    end
+    return current
+end
+
+-- ========== Initial actions ==========
+
+-- Step 1: Respawn
 local function respawn()
     local args = {"/respawn"}
     ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ControllerRemote"):FireServer(unpack(args))
@@ -45,47 +56,59 @@ local function teleportTo(x, y, z)
     end
 end
 
--- Step 4: Hold proximity prompt on scooter
+-- Step 4: Hold proximity prompt on scooter (ensuring player is in range)
 local function holdScooterPrompt()
-    local scooter = workspace:WaitForChild("Map"):WaitForChild("Scooters"):FindFirstChild("Scooter1")
+    local scooter = safeFind(workspace, {"Map", "Scooters", "Scooter1"})
     if not scooter then return end
-    local prompt = scooter:FindFirstChild("ProximityPrompt") or (scooter:FindFirstChild("Position") and scooter.Position:FindFirstChild("ProximityPrompt"))
-    if prompt then
-        prompt:InputHoldBegin()
-        wait(1)  -- hold for 1 second
-        prompt:InputHoldEnd()
+    local prompt = scooter:FindFirstChild("ProximityPrompt")
+    if not prompt then
+        prompt = safeFind(scooter, {"Position", "ProximityPrompt"})
     end
+    if not prompt then
+        warn("Scooter proximity prompt not found")
+        return
+    end
+    
+    -- Ensure player is close enough (move to prompt's position if needed)
+    local character = waitForCharacter()
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if rootPart then
+        rootPart.CFrame = CFrame.new(prompt.Parent.Position)
+        wait(0.2) -- let physics settle
+    end
+    
+    -- Trigger the prompt hold
+    prompt:InputHoldBegin()
+    wait(1) -- hold for 1 second
+    prompt:InputHoldEnd()
 end
 
--- Step 5: Delete wheels of player's car
+-- Step 5: Delete wheels from player's car
 local function deleteCarWheels()
-    local car = workspace:WaitForChild("Vehicles"):FindFirstChild(playerName .. "'s Car")
+    local car = safeFind(workspace, {"Vehicles", playerName .. "'s Car"})
     if not car then return end
     local wheels = car:FindFirstChild("Wheels")
     if wheels then
         local wheelNames = {"FL", "FR", "RL", "RR"}
-        for _, wheelName in ipairs(wheelNames) do
-            local wheel = wheels:FindFirstChild(wheelName)
+        for _, name in ipairs(wheelNames) do
+            local wheel = wheels:FindFirstChild(name)
             if wheel then wheel:Destroy() end
         end
     end
 end
 
--- Step 6: Modify weight part (transparency and cancollide)
+-- Step 6: Modify weight part
 local function modifyWeight()
-    local car = workspace:WaitForChild("Vehicles"):FindFirstChild(playerName .. "'s Car")
+    local car = safeFind(workspace, {"Vehicles", playerName .. "'s Car"})
     if not car then return end
-    local body = car:FindFirstChild("Body")
-    if body then
-        local weight = body:FindFirstChild("#Weight")
-        if weight then
-            weight.Transparency = 0.7
-            weight.CanCollide = true
-        end
+    local weight = safeFind(car, {"Body", "#Weight"})
+    if weight then
+        weight.Transparency = 0.7
+        weight.CanCollide = true
     end
 end
 
--- Perform initial actions in sequence
+-- Execute initial steps
 respawn()
 wait(1.6)
 buySkiMask()
@@ -95,25 +118,21 @@ wait(2)
 deleteCarWheels()
 modifyWeight()
 
--- ------------------------------------------------------------------
--- GUI Creation: Player selection menu with orbit button
--- ------------------------------------------------------------------
+-- ========== GUI: Player selection with smooth orbit ==========
 
--- Create screen GUI
+-- Create GUI
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "PlayerSelectorGUI"
 screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
 
--- Main frame
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 300, 0, 400)
+mainFrame.Size = UDim2.new(0, 300, 0, 450)
 mainFrame.Position = UDim2.new(0, 10, 0, 10)
 mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-mainFrame.BackgroundTransparency = 0.2
+mainFrame.BackgroundTransparency = 0.15
 mainFrame.BorderSizePixel = 0
 mainFrame.Parent = screenGui
 
--- Title
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 30)
 title.BackgroundTransparency = 1
@@ -123,7 +142,6 @@ title.Font = Enum.Font.GothamBold
 title.TextSize = 18
 title.Parent = mainFrame
 
--- Scrolling frame for player list
 local scrollFrame = Instance.new("ScrollingFrame")
 scrollFrame.Size = UDim2.new(1, 0, 1, -80)
 scrollFrame.Position = UDim2.new(0, 0, 0, 30)
@@ -134,13 +152,11 @@ scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 scrollFrame.ScrollBarThickness = 8
 scrollFrame.Parent = mainFrame
 
--- UIListLayout for automatic arrangement
 local listLayout = Instance.new("UIListLayout")
 listLayout.SortOrder = Enum.SortOrder.Name
 listLayout.Padding = UDim.new(0, 2)
 listLayout.Parent = scrollFrame
 
--- Orbit button
 local orbitButton = Instance.new("TextButton")
 orbitButton.Size = UDim2.new(1, -20, 0, 40)
 orbitButton.Position = UDim2.new(0, 10, 1, -50)
@@ -151,12 +167,13 @@ orbitButton.Font = Enum.Font.GothamBold
 orbitButton.TextSize = 16
 orbitButton.Parent = mainFrame
 
--- Variables for orbiting
+-- Orbit variables
 local currentTarget = nil
 local orbiting = false
 local orbitConnection = nil
+local selectedButton = nil
 
--- Function to stop orbit (if active) and teleport high & anchor
+-- Function to stop orbit and teleport high + anchor
 local function stopOrbitAndTeleport()
     if orbitConnection then
         orbitConnection:Disconnect()
@@ -165,10 +182,9 @@ local function stopOrbitAndTeleport()
     if orbiting then
         orbiting = false
         orbitButton.Text = "Start Orbit"
-        -- Teleport local player high up and anchor
-        local character = localPlayer.Character
-        if character then
-            local rootPart = character:FindFirstChild("HumanoidRootPart")
+        local char = localPlayer.Character
+        if char then
+            local rootPart = char:FindFirstChild("HumanoidRootPart")
             if rootPart then
                 rootPart.CFrame = CFrame.new(rootPart.Position.X, 1000, rootPart.Position.Z)
                 rootPart.Anchored = true
@@ -177,7 +193,7 @@ local function stopOrbitAndTeleport()
     end
 end
 
--- Function to start orbiting a target
+-- Function to start orbiting a target (smooth circle at high speed, always below)
 local function startOrbit(targetPlayer)
     if not targetPlayer then return end
     if orbitConnection then
@@ -189,13 +205,12 @@ local function startOrbit(targetPlayer)
     orbitButton.Text = "Stop Orbit"
     
     -- Fire combat remote once
-    local targetCharacter = targetPlayer.Character
-    if targetCharacter then
-        local humanoid = targetCharacter:FindFirstChild("Humanoid")
-        local head = targetCharacter:FindFirstChild("Head")
+    local targetChar = targetPlayer.Character
+    if targetChar then
+        local humanoid = targetChar:FindFirstChild("Humanoid")
+        local head = targetChar:FindFirstChild("Head")
         if humanoid and head then
-            local args = {"Hit", humanoid, head}
-            ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Combat"):FireServer(unpack(args))
+            ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Combat"):FireServer("Hit", humanoid, head)
         end
     end
     
@@ -208,13 +223,17 @@ local function startOrbit(targetPlayer)
         end
     end
     
-    -- Orbit loop (updates every frame)
+    -- Orbit parameters
+    local radius = 12
+    local verticalOffset = -5  -- always below target's feet
+    local angularSpeed = 8     -- radians per second (fast)
+    local angle = 0
+    local lastUpdate = os.clock()
+    
+    -- Update loop
     orbitConnection = RunService.RenderStepped:Connect(function()
         if not orbiting or not targetPlayer or not targetPlayer.Character then
-            -- Stop orbiting if conditions fail
-            if orbiting then
-                stopOrbitAndTeleport()
-            end
+            stopOrbitAndTeleport()
             return
         end
         
@@ -222,83 +241,101 @@ local function startOrbit(targetPlayer)
         local localRoot = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
         if not targetRoot or not localRoot then return end
         
-        -- Random hemisphere below target: angles: vertical from -pi/2 to 0, horizontal from 0 to 2pi
-        local radius = 12
-        local vertAngle = math.rad(math.random(-90, 0))  -- -90 to 0 degrees
-        local horzAngle = math.rad(math.random(0, 360))
+        -- Update angle based on time delta
+        local now = os.clock()
+        local dt = math.min(now - lastUpdate, 0.1)
+        lastUpdate = now
+        angle = angle + angularSpeed * dt
         
-        -- Compute offset vector
-        local offsetX = radius * math.cos(vertAngle) * math.cos(horzAngle)
-        local offsetY = radius * math.sin(vertAngle)  -- always <= 0
-        local offsetZ = radius * math.cos(vertAngle) * math.sin(horzAngle)
+        -- Compute circular position around target, staying below
+        local offsetX = radius * math.cos(angle)
+        local offsetZ = radius * math.sin(angle)
+        local targetPos = targetRoot.Position
+        local newPos = targetPos + Vector3.new(offsetX, verticalOffset, offsetZ)
         
-        -- Apply offset to target's position
-        local newPos = targetRoot.Position + Vector3.new(offsetX, offsetY, offsetZ)
+        -- Ensure local player is not above target (just in case)
+        if newPos.Y > targetPos.Y then
+            newPos = Vector3.new(newPos.X, targetPos.Y - 0.5, newPos.Z)
+        end
+        
         localRoot.CFrame = CFrame.new(newPos)
     end)
 end
 
--- Function to update player list UI
-local function updatePlayerList()
-    -- Clear existing buttons (except maybe keep a reference)
-    for _, child in ipairs(scrollFrame:GetChildren()) do
-        if child:IsA("TextButton") then
-            child:Destroy()
+-- Function to rebuild the player list (without destroying everything)
+local function refreshPlayerList()
+    -- Gather current player names
+    local currentPlayers = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer then
+            currentPlayers[player.Name] = player
         end
     end
     
-    -- Add a button for each player
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= localPlayer then
-            local button = Instance.new("TextButton")
-            button.Size = UDim2.new(1, 0, 0, 30)
-            button.Text = player.Name
-            button.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-            button.TextColor3 = Color3.fromRGB(255, 255, 255)
-            button.Font = Enum.Font.Gotham
-            button.TextSize = 14
-            button.Parent = scrollFrame
-            
-            button.MouseButton1Click:Connect(function()
-                -- Select new target: stop current orbit, teleport high, then set new target
-                if orbiting then
-                    stopOrbitAndTeleport()
-                end
-                currentTarget = player
-                -- Unanchor after teleport (the stopOrbitAndTeleport anchors, so unanchor when new target is selected)
-                local char = localPlayer.Character
-                if char then
-                    local root = char:FindFirstChild("HumanoidRootPart")
-                    if root then root.Anchored = false end
-                end
-                -- Optionally show a temporary selection feedback
-                button.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
-                wait(0.2)
-                button.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-            end)
+    -- Remove buttons for players that left
+    for _, child in ipairs(scrollFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            if not currentPlayers[child.Name] then
+                child:Destroy()
+            else
+                currentPlayers[child.Name] = nil -- mark as kept
+            end
         end
+    end
+    
+    -- Add buttons for new players
+    for name, player in pairs(currentPlayers) do
+        local button = Instance.new("TextButton")
+        button.Name = name
+        button.Size = UDim2.new(1, 0, 0, 30)
+        button.Text = name
+        button.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+        button.TextColor3 = Color3.fromRGB(255, 255, 255)
+        button.Font = Enum.Font.Gotham
+        button.TextSize = 14
+        button.Parent = scrollFrame
+        
+        button.MouseButton1Click:Connect(function()
+            -- Update selection highlight
+            if selectedButton then
+                selectedButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+            end
+            selectedButton = button
+            selectedButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+            
+            -- Stop current orbit if active
+            if orbiting then
+                stopOrbitAndTeleport()
+            end
+            currentTarget = player
+            -- Unanchor (since stopOrbitAndTeleport anchored, we need to unanchor)
+            local char = localPlayer.Character
+            if char then
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if root then root.Anchored = false end
+            end
+        end)
     end
     
     -- Update canvas size
-    local childrenCount = #scrollFrame:GetChildren()
-    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, childrenCount * 32)
+    local children = scrollFrame:GetChildren()
+    local buttonCount = 0
+    for _, child in ipairs(children) do
+        if child:IsA("TextButton") then buttonCount = buttonCount + 1 end
+    end
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, buttonCount * 32)
 end
 
--- Initial population
-updatePlayerList()
+-- Initial refresh
+refreshPlayerList()
 
--- Listen for new players
-Players.PlayerAdded:Connect(function()
-    updatePlayerList()
-end)
-Players.PlayerRemoving:Connect(function()
-    updatePlayerList()
-end)
+-- Watch for player joins/leaves
+Players.PlayerAdded:Connect(refreshPlayerList)
+Players.PlayerRemoving:Connect(refreshPlayerList)
 
--- Orbit button click handler
+-- Orbit button click
 orbitButton.MouseButton1Click:Connect(function()
     if not currentTarget then
-        -- No target selected, maybe show a hint
         orbitButton.Text = "Select a target first"
         wait(1)
         orbitButton.Text = orbiting and "Stop Orbit" or "Start Orbit"
@@ -306,24 +343,21 @@ orbitButton.MouseButton1Click:Connect(function()
     end
     
     if orbiting then
-        -- Stop orbiting
         stopOrbitAndTeleport()
     else
-        -- Start orbiting the current target
         startOrbit(currentTarget)
     end
 end)
 
--- Optional: initial teleport to set up anchored state (if desired)
-local function initialTeleportHigh()
-    local character = waitForCharacter()
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    if rootPart then
-        rootPart.CFrame = CFrame.new(rootPart.Position.X, 1000, rootPart.Position.Z)
-        rootPart.Anchored = true
+-- Initial teleport high and anchor
+local function initialTeleport()
+    local char = waitForCharacter()
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if root then
+        root.CFrame = CFrame.new(root.Position.X, 1000, root.Position.Z)
+        root.Anchored = true
     end
 end
-initialTeleportHigh()
+initialTeleport()
 
--- End of script
-print("Script loaded. Use GUI to select target and orbit.")
+print("Script loaded. Use the player list to select a target, then click Start Orbit.")
