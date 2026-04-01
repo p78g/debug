@@ -1,14 +1,15 @@
 --[[
-    Car Chopper Script - Fixed Iris + Ragdoll + ProPad Always Equipped
-    - Proper Iris structure (no more End() errors)
-    - ProPad is re-equipped before every teleport to the car
-    - Ragdoll triggered after going up to help bypass teleport anticheat
+    Car Chopper Script - Correct Continuous Spam Order
+    - Spam starts after initial 5 fires
+    - Spam runs continuously until AFTER unanchoring
+    - No ProPad equipping needed
 --]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterGui = game:GetService("StarterGui")
 local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
 
 local localPlayer = Players.LocalPlayer
 local playerName = localPlayer.Name
@@ -85,25 +86,25 @@ print("[Init] Initial sequence completed.")
 -- ========== Chop Logic ==========
 local selectedCar = nil
 local selectedDisplay = nil
+local spamConnection = nil
 
-local function equipProPad()
-    local proPadTool = localPlayer.Backpack:FindFirstChild("ProPad")
-    if proPadTool then
-        local character = waitForCharacter()
-        proPadTool.Parent = character
-        print("[Chop] ProPad equipped")
-        return true
-    else
-        warn("[Chop] ProPad not found in Backpack")
-        return false
-    end
+local function startProPadSpam(carInstance)
+    if spamConnection then spamConnection:Disconnect() end
+
+    spamConnection = RunService.Heartbeat:Connect(function()
+        if carInstance and carInstance.Parent then
+            ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ProPad"):FireServer(carInstance, true)
+        end
+    end)
+
+    print("[Chop] Continuous ProPad spam STARTED")
 end
 
-local function triggerRagdoll()
-    local hum = localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid")
-    if hum then
-        hum:ChangeState(Enum.HumanoidStateType.Ragdoll)
-        print("[Chop] Ragdoll triggered to bypass anticheat")
+local function stopProPadSpam()
+    if spamConnection then
+        spamConnection:Disconnect()
+        spamConnection = nil
+        print("[Chop] Continuous ProPad spam STOPPED")
     end
 end
 
@@ -115,35 +116,32 @@ local function chopCar(carInstance, displayName)
 
     print("[Chop] Starting on: " .. displayName)
 
-    -- 1. Fire ProPad remote 5 times (exact format)
+    -- Initial 5 fires
     local proPadRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ProPad")
     for i = 1, 5 do
         proPadRemote:FireServer(carInstance, true)
-        print("[Chop] ProPad remote fired #" .. i)
         task.wait(0.2)
     end
 
     task.wait(0.1)
 
-    -- 2. Teleport 40 studs up + trigger ragdoll
+    -- === START CONTINUOUS SPAM HERE ===
+    startProPadSpam(carInstance)
+
+    -- Teleport 40 studs up
     local rootPart = waitForCharacter():FindFirstChild("HumanoidRootPart")
     if rootPart then
         rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 40, 0)
         print("[Chop] Teleported 40 studs up")
-        triggerRagdoll()
     end
 
     task.wait(1.5)
 
-    -- 3. Equip ProPad (re-equip every time)
-    equipProPad()
-
-    -- 4. Teleport to DriveSeat
+    -- Teleport to DriveSeat
     local driveSeat = carInstance:FindFirstChild("DriveSeat")
     if driveSeat and rootPart then
         rootPart.CFrame = driveSeat.CFrame + Vector3.new(0, 3, 0)
         print("[Chop] Teleported to DriveSeat")
-        equipProPad()  -- double-check equip after TP
     end
 
     task.wait(13)
@@ -158,22 +156,27 @@ local function chopCar(carInstance, displayName)
         print("[Chop] Wheels deleted")
     end
 
-    -- Final safe spot
+    -- Final safe spot + 20s anchor
     local finalRoot = waitForCharacter():FindFirstChild("HumanoidRootPart")
     if finalRoot then
         finalRoot.CFrame = CFrame.new(1096, 70, 608)
         task.wait(0.1)
         finalRoot.Anchored = true
         print("[Chop] Anchored for 20 seconds")
+        
         task.wait(20)
+        
         finalRoot.Anchored = false
         print("[Chop] Unanchored")
     end
 
+    -- === STOP SPAM AFTER UNANCHOR ===
+    stopProPadSpam()
+
     print("[Chop] ✅ Finished on " .. displayName)
 end
 
--- ========== Fixed Iris GUI ==========
+-- ========== Iris GUI (Stable) ==========
 local Iris = loadstring(game:HttpGet("https://raw.githubusercontent.com/x0581/Iris-Exploit-Bundle/main/bundle.lua"))().Init(game.CoreGui)
 Iris.UpdateGlobalConfig(Iris.TemplateConfig.colorDark)
 
@@ -200,7 +203,7 @@ Iris:Connect(function()
                     end
                 end
             end
-        Iris.End()   -- End Tree
+        Iris.End()
 
         Iris.Separator()
 
@@ -219,9 +222,8 @@ Iris:Connect(function()
         Iris.Text({"Selected: " .. (selectedDisplay or "None")})
         Iris.Text({"Inventory Protection: ACTIVE"})
 
-    Iris.End()   -- End Window
+    Iris.End()
 end)
 
-print("✅ Script loaded with fixes!")
-print("ProPad is now re-equipped before every teleport.")
-print("Ragdoll is triggered after going up to help bypass anticheat.")
+print("✅ Script loaded with correct spam timing!")
+print("Spam starts after initial 5 fires and stops only after unanchoring.")
