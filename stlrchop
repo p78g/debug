@@ -1,7 +1,5 @@
 --[[
-    Car Chopper Script - Exact Args Format You Requested
-    - Uses local args = { carInstance, true } + unpack(args)
-    - Continuous spam runs until after unanchoring
+    Car Chopper Script - Clean Version
 --]]
 
 local Players = game:GetService("Players")
@@ -32,23 +30,17 @@ local function safeFind(instance, path)
 end
 
 -- ========== Inventory Protection ==========
-local function enableInventory()
-    pcall(function()
-        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, true)
-        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Inventory, true)
-    end)
-end
-
 coroutine.wrap(function()
     while true do
         task.wait(0.15)
-        enableInventory()
+        pcall(function()
+            StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, true)
+            StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Inventory, true)
+        end)
     end
 end)()
 
 -- ========== Initial Sequence ==========
-print("[Init] Running initial setup...")
-
 ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ATM"):FireServer("Withdraw", 5050)
 task.wait(0.5)
 
@@ -74,8 +66,6 @@ end
 ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Buy"):FireServer("SkiMask", 50)
 task.wait(0.5)
 
-print("[Init] Initial sequence completed.")
-
 -- ========== Chop Logic ==========
 local selectedCar = nil
 local selectedDisplay = nil
@@ -86,52 +76,37 @@ local function startProPadSpam(carInstance)
 
     spamConnection = RunService.Heartbeat:Connect(function()
         if carInstance and carInstance.Parent then
-            -- EXACT format you provided
-            local args = {
-                carInstance,
-                true
-            }
+            local args = { carInstance, true }
             ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ProPad"):FireServer(unpack(args))
         end
     end)
-
-    print("[Chop] Continuous ProPad spam STARTED")
 end
 
 local function stopProPadSpam()
     if spamConnection then
         spamConnection:Disconnect()
         spamConnection = nil
-        print("[Chop] Continuous ProPad spam STOPPED")
     end
 end
 
 local function chopCar(carInstance, displayName)
-    if not carInstance then 
-        print("❌ No car selected!")
-        return 
-    end
+    if not carInstance then return end
 
-    print("[Chop] Starting on: " .. displayName)
-
-    -- Initial 5 fires using exact args format
+    -- Initial 5 fires
     for i = 1, 5 do
         local args = { carInstance, true }
         ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ProPad"):FireServer(unpack(args))
-        print("[Chop] ProPad fired #" .. i)
         task.wait(0.2)
     end
 
     task.wait(0.1)
 
-    -- Start continuous spam
     startProPadSpam(carInstance)
 
     -- Teleport 40 studs up
     local rootPart = waitForCharacter():FindFirstChild("HumanoidRootPart")
     if rootPart then
         rootPart.CFrame = rootPart.CFrame + Vector3.new(0, 40, 0)
-        print("[Chop] Teleported 40 studs up")
     end
 
     task.wait(1.5)
@@ -140,7 +115,6 @@ local function chopCar(carInstance, displayName)
     local driveSeat = carInstance:FindFirstChild("DriveSeat")
     if driveSeat and rootPart then
         rootPart.CFrame = driveSeat.CFrame + Vector3.new(0, 3, 0)
-        print("[Chop] Teleported to DriveSeat")
     end
 
     task.wait(13)
@@ -152,7 +126,6 @@ local function chopCar(carInstance, displayName)
             local wheel = wheels:FindFirstChild(name)
             if wheel then wheel:Destroy() end
         end
-        print("[Chop] Wheels deleted")
     end
 
     -- Final safe spot + 20s anchor
@@ -161,18 +134,11 @@ local function chopCar(carInstance, displayName)
         finalRoot.CFrame = CFrame.new(1096, 70, 608)
         task.wait(0.1)
         finalRoot.Anchored = true
-        print("[Chop] Anchored for 20 seconds")
-        
         task.wait(20)
-        
         finalRoot.Anchored = false
-        print("[Chop] Unanchored")
     end
 
-    -- Stop spam after unanchor
     stopProPadSpam()
-
-    print("[Chop] ✅ Finished on " .. displayName)
 end
 
 -- ========== Iris GUI ==========
@@ -180,7 +146,7 @@ local Iris = loadstring(game:HttpGet("https://raw.githubusercontent.com/x0581/Ir
 Iris.UpdateGlobalConfig(Iris.TemplateConfig.colorDark)
 
 Iris:Connect(function()
-    Iris.Window({"Car Chopper"}, {size = Iris.State(Vector2.new(400, 550))})
+    Iris.Window({"Car Chopper"}, {size = Iris.State(Vector2.new(400, 520))})
 
         Iris.Text({"Select Car to Chop:"})
 
@@ -205,22 +171,17 @@ Iris:Connect(function()
 
         Iris.Separator()
 
-        if Iris.Button({"🔪 Chop Selected Car"}).clicked then
+        if Iris.Button({"Chop Selected Car"}).clicked then
             if selectedCar then
                 chopCar(selectedCar, selectedDisplay)
-            else
-                print("❌ No car selected!")
             end
         end
 
         if Iris.Button({"Refresh Car List"}).clicked then
-            print("Car list refreshed")
+            -- Refresh does nothing extra, just forces GUI update
         end
 
         Iris.Text({"Selected: " .. (selectedDisplay or "None")})
-        Iris.Text({"Inventory Protection: ACTIVE"})
 
     Iris.End()
 end)
-
-print("✅ Script loaded with exact args format you wanted")
