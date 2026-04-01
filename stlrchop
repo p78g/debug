@@ -1,8 +1,7 @@
 --[[
-    Car Chopper Script - Correct Continuous Spam Order
-    - Spam starts after initial 5 fires
-    - Spam runs continuously until AFTER unanchoring
-    - No ProPad equipping needed
+    Car Chopper Script - Exact Args Format You Requested
+    - Uses local args = { carInstance, true } + unpack(args)
+    - Continuous spam runs until after unanchoring
 --]]
 
 local Players = game:GetService("Players")
@@ -12,7 +11,6 @@ local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 
 local localPlayer = Players.LocalPlayer
-local playerName = localPlayer.Name
 
 -- ========== Helpers ==========
 local function waitForCharacter()
@@ -45,11 +43,6 @@ coroutine.wrap(function()
     while true do
         task.wait(0.15)
         enableInventory()
-        local hum = localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid")
-        if hum then
-            hum:SetAttribute("InventoryEnabled", true)
-            hum:SetAttribute("CanOpenInventory", true)
-        end
     end
 end)()
 
@@ -93,7 +86,12 @@ local function startProPadSpam(carInstance)
 
     spamConnection = RunService.Heartbeat:Connect(function()
         if carInstance and carInstance.Parent then
-            ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ProPad"):FireServer(carInstance, true)
+            -- EXACT format you provided
+            local args = {
+                carInstance,
+                true
+            }
+            ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ProPad"):FireServer(unpack(args))
         end
     end)
 
@@ -116,16 +114,17 @@ local function chopCar(carInstance, displayName)
 
     print("[Chop] Starting on: " .. displayName)
 
-    -- Initial 5 fires
-    local proPadRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ProPad")
+    -- Initial 5 fires using exact args format
     for i = 1, 5 do
-        proPadRemote:FireServer(carInstance, true)
+        local args = { carInstance, true }
+        ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ProPad"):FireServer(unpack(args))
+        print("[Chop] ProPad fired #" .. i)
         task.wait(0.2)
     end
 
     task.wait(0.1)
 
-    -- === START CONTINUOUS SPAM HERE ===
+    -- Start continuous spam
     startProPadSpam(carInstance)
 
     -- Teleport 40 studs up
@@ -170,13 +169,13 @@ local function chopCar(carInstance, displayName)
         print("[Chop] Unanchored")
     end
 
-    -- === STOP SPAM AFTER UNANCHOR ===
+    -- Stop spam after unanchor
     stopProPadSpam()
 
     print("[Chop] ✅ Finished on " .. displayName)
 end
 
--- ========== Iris GUI (Stable) ==========
+-- ========== Iris GUI ==========
 local Iris = loadstring(game:HttpGet("https://raw.githubusercontent.com/x0581/Iris-Exploit-Bundle/main/bundle.lua"))().Init(game.CoreGui)
 Iris.UpdateGlobalConfig(Iris.TemplateConfig.colorDark)
 
@@ -194,7 +193,6 @@ Iris:Connect(function()
                     if Iris.Button({display}).clicked then
                         selectedCar = car
                         selectedDisplay = display
-                        print("Selected: " .. display)
                     end
 
                     if selectedDisplay == display then
@@ -225,5 +223,4 @@ Iris:Connect(function()
     Iris.End()
 end)
 
-print("✅ Script loaded with correct spam timing!")
-print("Spam starts after initial 5 fires and stops only after unanchoring.")
+print("✅ Script loaded with exact args format you wanted")
