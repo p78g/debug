@@ -1,9 +1,8 @@
 --[[
-    Full Execution Script with Iris GUI
-    - Performs initial actions (respawn, buy, teleport, prompt, car mods)
-    - Opens an Iris window to select target and orbit
-    - Orbit stays below target at 12 stud radius, high speed
-    - Stops orbiting → teleports high → wait 0.2s → anchor
+    Roblox Execution Script with Fallback GUI
+    - If Iris is installed, uses it; otherwise uses a simple ScreenGui.
+    - Proximity prompt fixed: moves player to exact prompt location.
+    - Orbit stops with teleport high, wait 0.2s, then anchor.
 --]]
 
 local Players = game:GetService("Players")
@@ -54,9 +53,10 @@ local function teleportTo(x, y, z)
 end
 
 local function holdScooterPrompt()
+    -- Locate the scooter and prompt with better search
     local scooter = safeFind(workspace, {"Map", "Scooters", "Scooter1"})
     if not scooter then
-        warn("Scooter not found")
+        warn("[Proximity] Scooter not found")
         return
     end
 
@@ -65,7 +65,15 @@ local function holdScooterPrompt()
         prompt = safeFind(scooter, {"Position", "ProximityPrompt"})
     end
     if not prompt then
-        warn("Proximity prompt not found on scooter")
+        warn("[Proximity] Proximity prompt not found on scooter")
+        return
+    end
+
+    -- Get the part that contains the prompt (the prompt's parent should be a BasePart)
+    local promptParent = prompt.Parent
+    local targetPart = promptParent:IsA("BasePart") and promptParent or promptParent:FindFirstChildWhichIsA("BasePart")
+    if not targetPart then
+        warn("[Proximity] Cannot find a part to move to")
         return
     end
 
@@ -73,15 +81,15 @@ local function holdScooterPrompt()
     local rootPart = character:FindFirstChild("HumanoidRootPart")
     if not rootPart then return end
 
-    local promptParent = prompt.Parent
-    local targetPosition = promptParent:IsA("BasePart") and promptParent.Position or promptParent:FindFirstChildWhichIsA("BasePart").Position
+    -- Move directly onto the part
+    rootPart.CFrame = CFrame.new(targetPart.Position)
+    wait(0.2) -- allow physics to settle
 
-    rootPart.CFrame = CFrame.new(targetPosition)
-    wait(0.1)
-
+    print("[Proximity] Holding prompt for 1 second...")
     prompt:InputHoldBegin()
     wait(1)
     prompt:InputHoldEnd()
+    print("[Proximity] Prompt released")
 end
 
 local function deleteCarWheels()
@@ -107,49 +115,27 @@ local function modifyWeight()
     end
 end
 
--- Execute initial steps with added 0.5s delay before scooter prompt
+-- Execute initial steps
 respawn()
 wait(1.6)
 buySkiMask()
 teleportTo(541, 52, -93)
-wait(0.5)                      -- <-- added delay
+wait(0.5)   -- delay before prompt
 holdScooterPrompt()
 wait(2)
 deleteCarWheels()
 modifyWeight()
 
--- ========== Iris GUI Setup ==========
-local Iris = nil
--- Try to find Iris in common locations
-local irisPaths = {
-    ReplicatedStorage:FindFirstChild("Iris"),
-    localPlayer:FindFirstChild("PlayerScripts") and localPlayer.PlayerScripts:FindFirstChild("Iris"),
-    game:GetService("StarterPlayer").StarterPlayerScripts:FindFirstChild("Iris"),
-    game:GetService("CoreGui"):FindFirstChild("Iris"),
-}
-for _, irisModule in ipairs(irisPaths) do
-    if irisModule then
-        Iris = require(irisModule).Init()
-        break
-    end
-end
-
-if not Iris then
-    error("Iris not found. Please install Iris (e.g., in ReplicatedStorage) and try again.")
-end
-
--- Orbit state variables
+-- ========== Orbit logic ==========
 local currentTarget = nil
 local orbiting = false
 local orbitConnection = nil
 local selectedPlayerName = nil
 
--- Orbit parameters
 local ORBIT_RADIUS = 12
-local VERTICAL_OFFSET = -5      -- always below target
-local ANGULAR_SPEED = 8          -- radians per second
+local VERTICAL_OFFSET = -5
+local ANGULAR_SPEED = 8
 
--- Function to stop orbit, teleport high, wait 0.2s, then anchor
 local function stopOrbitAndTeleport()
     if orbitConnection then
         orbitConnection:Disconnect()
@@ -162,14 +148,13 @@ local function stopOrbitAndTeleport()
             local rootPart = char:FindFirstChild("HumanoidRootPart")
             if rootPart then
                 rootPart.CFrame = CFrame.new(rootPart.Position.X, 1000, rootPart.Position.Z)
-                wait(0.2)                -- <-- wait 0.2 seconds
+                wait(0.2)                -- wait 0.2 seconds before anchoring
                 rootPart.Anchored = true
             end
         end
     end
 end
 
--- Start orbiting a target
 local function startOrbit(targetPlayer)
     if not targetPlayer then return end
     if orbitConnection then
@@ -189,7 +174,7 @@ local function startOrbit(targetPlayer)
         end
     end
 
-    -- Unanchor local player (in case they were anchored)
+    -- Unanchor local player
     local localChar = localPlayer.Character
     if localChar then
         local rootPart = localChar:FindFirstChild("HumanoidRootPart")
@@ -198,7 +183,6 @@ local function startOrbit(targetPlayer)
         end
     end
 
-    -- Orbit loop (updates every frame)
     local angle = 0
     local lastUpdate = os.clock()
 
@@ -212,19 +196,16 @@ local function startOrbit(targetPlayer)
         local localRoot = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
         if not targetRoot or not localRoot then return end
 
-        -- Update angle based on time
         local now = os.clock()
         local dt = math.min(now - lastUpdate, 0.1)
         lastUpdate = now
         angle = angle + ANGULAR_SPEED * dt
 
-        -- Compute circular position below target
         local offsetX = ORBIT_RADIUS * math.cos(angle)
         local offsetZ = ORBIT_RADIUS * math.sin(angle)
         local targetPos = targetRoot.Position
         local newPos = targetPos + Vector3.new(offsetX, VERTICAL_OFFSET, offsetZ)
 
-        -- Safety: never go above target
         if newPos.Y > targetPos.Y then
             newPos = Vector3.new(newPos.X, targetPos.Y - 0.5, newPos.Z)
         end
@@ -233,73 +214,193 @@ local function startOrbit(targetPlayer)
     end)
 end
 
--- Iris UI
-Iris:Connect(function()
-    -- Main window
-    local windowOpen = Iris.State(true)
-    local windowSize = Iris.State(Vector2.new(300, 450))
-    Iris.Window({"Player Orbit"}, {open = windowOpen, size = windowSize})
+-- ========== GUI Setup (Iris if available, otherwise custom) ==========
+local Iris = nil
+local irisPaths = {
+    ReplicatedStorage:FindFirstChild("Iris"),
+    localPlayer:FindFirstChild("PlayerScripts") and localPlayer.PlayerScripts:FindFirstChild("Iris"),
+    game:GetService("StarterPlayer").StarterPlayerScripts:FindFirstChild("Iris"),
+    game:GetService("CoreGui"):FindFirstChild("Iris"),
+}
+for _, irisModule in ipairs(irisPaths) do
+    if irisModule then
+        local success, result = pcall(require, irisModule)
+        if success and result then
+            Iris = result.Init()
+            break
+        end
+    end
+end
 
-        -- Scrolling list of players
-        Iris.BeginChild({"playerList"}, {size = Vector2.new(0, 300)})
-
-            local players = Players:GetPlayers()
-            for _, player in ipairs(players) do
-                if player ~= localPlayer then
-                    -- Button for each player
-                    local clicked = Iris.Button({player.Name}).clicked()
-                    if clicked then
-                        selectedPlayerName = player.Name
-                        -- Stop any current orbit
-                        if orbiting then
-                            stopOrbitAndTeleport()
-                        end
-                        currentTarget = player
-                        -- Unanchor local player after teleport
-                        local char = localPlayer.Character
-                        if char then
-                            local root = char:FindFirstChild("HumanoidRootPart")
-                            if root then
-                                root.Anchored = false
+if Iris then
+    -- Use Iris GUI
+    print("Using Iris GUI")
+    Iris:Connect(function()
+        local windowOpen = Iris.State(true)
+        local windowSize = Iris.State(Vector2.new(300, 450))
+        Iris.Window({"Player Orbit"}, {open = windowOpen, size = windowSize})
+            Iris.BeginChild({"playerList"}, {size = Vector2.new(0, 300)})
+                local players = Players:GetPlayers()
+                for _, player in ipairs(players) do
+                    if player ~= localPlayer then
+                        if Iris.Button({player.Name}).clicked() then
+                            selectedPlayerName = player.Name
+                            if orbiting then stopOrbitAndTeleport() end
+                            currentTarget = player
+                            local char = localPlayer.Character
+                            if char then
+                                local root = char:FindFirstChild("HumanoidRootPart")
+                                if root then root.Anchored = false end
                             end
                         end
-                    end
-                    -- Highlight selected player
-                    if selectedPlayerName == player.Name then
-                        -- Iris doesn't have direct highlight; we can use same line color change if needed
-                        -- but a simple visual marker can be added with SameLine + Text, but we'll keep simple
+                        if selectedPlayerName == player.Name then
+                            -- Highlight the selected row (Iris doesn't have direct, but we can add a checkmark)
+                            Iris.SameLine()
+                            Iris.Text({"[✓]"})
+                        end
                     end
                 end
-            end
-
-        Iris.EndChild() -- end player list
-
-        -- Orbit button (separate)
-        local orbitButtonText = orbiting and "Stop Orbit" or "Start Orbit"
-        if Iris.Button({orbitButtonText}).clicked() then
-            if not currentTarget then
-                -- Show temporary message that no target selected
-                print("No target selected")
-            else
-                if orbiting then
-                    stopOrbitAndTeleport()
+            Iris.EndChild()
+            if Iris.Button({orbiting and "Stop Orbit" or "Start Orbit"}).clicked() then
+                if not currentTarget then
+                    print("No target selected")
                 else
-                    startOrbit(currentTarget)
+                    if orbiting then stopOrbitAndTeleport() else startOrbit(currentTarget) end
+                end
+            end
+            if selectedPlayerName then
+                Iris.Text({"Selected: " .. selectedPlayerName})
+            else
+                Iris.Text({"No target selected"})
+            end
+        Iris.End()
+    end)
+else
+    -- Fallback to a simple, stable ScreenGui
+    print("Iris not found. Using fallback ScreenGui.")
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "PlayerSelectorGUI"
+    screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
+
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Size = UDim2.new(0, 300, 0, 450)
+    mainFrame.Position = UDim2.new(0, 10, 0, 10)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    mainFrame.BackgroundTransparency = 0.15
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Parent = screenGui
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 30)
+    title.BackgroundTransparency = 1
+    title.Text = "Player List"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 18
+    title.Parent = mainFrame
+
+    local scrollFrame = Instance.new("ScrollingFrame")
+    scrollFrame.Size = UDim2.new(1, 0, 1, -80)
+    scrollFrame.Position = UDim2.new(0, 0, 0, 30)
+    scrollFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    scrollFrame.BackgroundTransparency = 0.5
+    scrollFrame.BorderSizePixel = 0
+    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scrollFrame.ScrollBarThickness = 8
+    scrollFrame.Parent = mainFrame
+
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.SortOrder = Enum.SortOrder.Name
+    listLayout.Padding = UDim.new(0, 2)
+    listLayout.Parent = scrollFrame
+
+    local orbitButton = Instance.new("TextButton")
+    orbitButton.Size = UDim2.new(1, -20, 0, 40)
+    orbitButton.Position = UDim2.new(0, 10, 1, -50)
+    orbitButton.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+    orbitButton.Text = "Start Orbit"
+    orbitButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    orbitButton.Font = Enum.Font.GothamBold
+    orbitButton.TextSize = 16
+    orbitButton.AutoButtonColor = false  -- Prevents hover shrinking
+    orbitButton.Parent = mainFrame
+
+    local selectedButton = nil
+
+    local function refreshPlayerList()
+        local currentPlayers = {}
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= localPlayer then
+                currentPlayers[player.Name] = player
+            end
+        end
+
+        for _, child in ipairs(scrollFrame:GetChildren()) do
+            if child:IsA("TextButton") then
+                if not currentPlayers[child.Name] then
+                    child:Destroy()
+                else
+                    currentPlayers[child.Name] = nil
                 end
             end
         end
 
-        -- Optional: show currently selected target
-        if selectedPlayerName then
-            Iris.Text({"Selected: " .. selectedPlayerName})
-        else
-            Iris.Text({"No target selected"})
+        for name, player in pairs(currentPlayers) do
+            local button = Instance.new("TextButton")
+            button.Name = name
+            button.Size = UDim2.new(1, 0, 0, 30)
+            button.Text = name
+            button.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+            button.TextColor3 = Color3.fromRGB(255, 255, 255)
+            button.Font = Enum.Font.Gotham
+            button.TextSize = 14
+            button.AutoButtonColor = false
+            button.Parent = scrollFrame
+
+            button.MouseButton1Click:Connect(function()
+                if selectedButton then
+                    selectedButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+                end
+                selectedButton = button
+                selectedButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+                if orbiting then stopOrbitAndTeleport() end
+                currentTarget = player
+                selectedPlayerName = player.Name
+                local char = localPlayer.Character
+                if char then
+                    local root = char:FindFirstChild("HumanoidRootPart")
+                    if root then root.Anchored = false end
+                end
+            end)
         end
 
-    Iris.End() -- end window
-end)
+        local buttonCount = 0
+        for _, child in ipairs(scrollFrame:GetChildren()) do
+            if child:IsA("TextButton") then buttonCount = buttonCount + 1 end
+        end
+        scrollFrame.CanvasSize = UDim2.new(0, 0, 0, buttonCount * 32)
+    end
 
--- Initial teleport high and anchor (start anchored)
+    refreshPlayerList()
+    Players.PlayerAdded:Connect(refreshPlayerList)
+    Players.PlayerRemoving:Connect(refreshPlayerList)
+
+    orbitButton.MouseButton1Click:Connect(function()
+        if not currentTarget then
+            orbitButton.Text = "Select target first"
+            wait(1)
+            orbitButton.Text = orbiting and "Stop Orbit" or "Start Orbit"
+            return
+        end
+        if orbiting then
+            stopOrbitAndTeleport()
+        else
+            startOrbit(currentTarget)
+        end
+    end)
+end
+
+-- Initial teleport high and anchor
 local function initialTeleport()
     local char = waitForCharacter()
     local root = char:FindFirstChild("HumanoidRootPart")
@@ -310,4 +411,4 @@ local function initialTeleport()
 end
 initialTeleport()
 
-print("Script loaded with Iris GUI. Select a player from the list and click Start Orbit.")
+print("Script loaded. GUI ready. Select a player and click Start Orbit.")
