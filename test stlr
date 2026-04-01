@@ -1,9 +1,9 @@
 --[[
-    Final Fixed Version
-    - Infinite Yield style inventory enable (bypasses car disable)
-    - Continuous Combat "Hit" remote during orbit
+    Final Version - Orbit Always Below Target
+    - Orbit position is now clearly underneath the target to reduce detection
+    - Continuous Combat Hit remote
+    - Strong Infinite Yield style inventory protection
     - Anchor delay after high teleport
-    - Dropdown player selection
 --]]
 
 local Players = game:GetService("Players")
@@ -32,26 +32,19 @@ local function safeFind(instance, path)
     return current
 end
 
--- ========== Infinite Yield Style Inventory Enable ==========
+-- ========== Strong Inventory Protection (Infinite Yield Style) ==========
 local function enableInventory()
     pcall(function()
         StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, true)
         StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Inventory, true)
-    end)
-    
-    -- Refresh trick used in IY
-    pcall(function()
-        StarterGui:SetCore("ResetButtonCallback", true)
     end)
 end
 
 local function strongInventorySpam()
     while true do
         task.wait(0.15)
-        
         enableInventory()
         
-        -- Extra attribute spam
         local char = localPlayer.Character
         if char then
             local hum = char:FindFirstChild("Humanoid")
@@ -60,7 +53,6 @@ local function strongInventorySpam()
                 hum:SetAttribute("CanOpenInventory", true)
             end
         end
-        
         localPlayer:SetAttribute("InventoryEnabled", true)
     end
 end
@@ -125,7 +117,7 @@ local function modifyWeight()
     end
 end
 
--- ========== Orbit Logic with Continuous Hit Remote ==========
+-- ========== Orbit Logic - Always Below Target ==========
 local currentTarget = nil
 local orbiting = false
 local orbitConnection = nil
@@ -133,14 +125,13 @@ local hitConnection = nil
 local selectedPlayerName = nil
 
 local ORBIT_RADIUS = 12
-local VERTICAL_OFFSET = -5
+local VERTICAL_OFFSET = -12     -- ← Increased downward offset (more under the target)
 local ANGULAR_SPEED = 8
 local ANCHOR_DELAY = 0.5
 
 local function stopOrbitAndTeleport()
     if orbitConnection then orbitConnection:Disconnect() orbitConnection = nil end
     if hitConnection then hitConnection:Disconnect() hitConnection = nil end
-    
     orbiting = false
     
     local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -155,7 +146,7 @@ end
 
 local function startOrbit(targetPlayer)
     if not targetPlayer then return end
-    stopOrbitAndTeleport() -- clean previous
+    stopOrbitAndTeleport()
     
     orbiting = true
     currentTarget = targetPlayer
@@ -164,7 +155,7 @@ local function startOrbit(targetPlayer)
     local lRoot = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
     if lRoot then lRoot.Anchored = false end
     
-    -- Continuous Hit Remote (every 0.3s)
+    -- Continuous Hit Remote
     hitConnection = RunService.Heartbeat:Connect(function()
         if not orbiting or not targetPlayer.Character then return end
         local tChar = targetPlayer.Character
@@ -175,7 +166,7 @@ local function startOrbit(targetPlayer)
         end
     end)
     
-    -- Orbit movement
+    -- Orbit movement (always below)
     local angle = 0
     local lastUpdate = os.clock()
     
@@ -184,6 +175,7 @@ local function startOrbit(targetPlayer)
             stopOrbitAndTeleport()
             return
         end
+        
         local tRoot = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
         local lRoot = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
         if not tRoot or not lRoot then return end
@@ -192,11 +184,17 @@ local function startOrbit(targetPlayer)
         lastUpdate = os.clock()
         angle = angle + ANGULAR_SPEED * dt
         
-        local offset = Vector3.new(ORBIT_RADIUS * math.cos(angle), VERTICAL_OFFSET, ORBIT_RADIUS * math.sin(angle))
-        local newPos = tRoot.Position + offset
-        if newPos.Y > tRoot.Position.Y then
-            newPos = Vector3.new(newPos.X, tRoot.Position.Y - 0.5, newPos.Z)
+        local offsetX = ORBIT_RADIUS * math.cos(angle)
+        local offsetZ = ORBIT_RADIUS * math.sin(angle)
+        
+        local targetPos = tRoot.Position
+        local newPos = targetPos + Vector3.new(offsetX, VERTICAL_OFFSET, offsetZ)
+        
+        -- Force position to stay below target
+        if newPos.Y > targetPos.Y - 1 then
+            newPos = Vector3.new(newPos.X, targetPos.Y - 1.5, newPos.Z)
         end
+        
         lRoot.CFrame = CFrame.new(newPos)
     end)
 end
@@ -249,7 +247,9 @@ Iris:Connect(function()
         end
         
         Iris.Text({"Selected: " .. (selectedPlayerName or "None")})
-        if orbiting then Iris.Text({"Status: Orbiting + Hitting"}) end
+        if orbiting then 
+            Iris.Text({"Status: Orbiting (Below Target)"})
+        end
         Iris.Text({"Inventory Protection: ACTIVE (IY Style)"})
         
     Iris.End()
@@ -280,6 +280,5 @@ if finalRoot then
     finalRoot.Anchored = true
 end
 
-print("Script loaded successfully!")
-print("Inventory protection (Infinite Yield style) is now active.")
-print("Combat Hit remote will fire continuously while orbiting.")
+print("Script loaded!")
+print("Orbit is now positioned UNDER the target to reduce detection.")
