@@ -1,5 +1,5 @@
 --[[
-    Car Chopper Script - Fixed Iris + Single Wheel Delete
+    Car Chopper Script - Fixed Iris GUI Layout
 --]]
 
 local Players = game:GetService("Players")
@@ -42,7 +42,6 @@ local function doInitialSetup()
     if root then root.CFrame = CFrame.new(1053, 54, -104) end
     task.wait(0.8)
 
-    -- GunStore prompt
     local gunPrompt = Workspace:FindFirstChild("Map", true) 
         and Workspace.Map:FindFirstChild("GunStore", true)
         and Workspace.Map.GunStore:FindFirstChild("GunTable", true)
@@ -120,7 +119,7 @@ local function chopCar(carInstance, displayName)
 
     task.wait(13)
 
-    -- Delete wheels + extra handlers (only once)
+    -- Delete wheels + extra handlers (once only)
     local wheels = carInstance:FindFirstChild("Wheels")
     if wheels then
         for _, name in {"FL", "FR", "RL", "RR"} do
@@ -157,6 +156,7 @@ Iris:Connect(function()
 
         Iris.Text({"Select Car to Chop:"})
 
+        -- Car List
         Iris.Tree({"Available Cars"})
             for _, car in ipairs(Workspace.Vehicles:GetChildren()) do
                 if car.Name:find("'s Car") then
@@ -178,6 +178,7 @@ Iris:Connect(function()
 
         Iris.Separator()
 
+        -- Action Buttons (outside the tree)
         if Iris.Button({"Chop Selected Car"}).clicked then
             if selectedCar then
                 chopCar(selectedCar, selectedDisplay)
@@ -189,7 +190,7 @@ Iris:Connect(function()
         end
 
         if Iris.Button({"Refresh Car List"}).clicked then
-            -- Refresh
+            -- Refresh (forces re-render)
         end
 
         Iris.Text({"Selected: " .. (selectedDisplay or "None")})
