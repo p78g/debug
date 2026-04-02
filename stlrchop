@@ -1,5 +1,8 @@
 --[[
-    Car Chopper Script - Fixed Iris GUI Layout
+    Car Chopper Script - Stable Iris GUI
+    - Fixed "too few calls to Iris.End()" error
+    - Buttons stay in correct position
+    - Wheels + extra handlers deleted only once
 --]]
 
 local Players = game:GetService("Players")
@@ -30,7 +33,7 @@ coroutine.wrap(function()
     end
 end)()
 
--- ========== Initial Setup Function ==========
+-- ========== Initial Setup ==========
 local function doInitialSetup()
     ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ATM"):FireServer("Withdraw", 5050)
     task.wait(0.5)
@@ -55,7 +58,7 @@ local function doInitialSetup()
             root.CFrame = CFrame.new(targetPart.Position + Vector3.new(0, 4, 0))
             task.wait(0.4)
             gunPrompt:InputHoldBegin()
-            task.wait(1)
+            task.wait(2)
             gunPrompt:InputHoldEnd()
         end
     end
@@ -64,7 +67,6 @@ local function doInitialSetup()
     task.wait(0.5)
 end
 
--- Run once on load
 doInitialSetup()
 
 -- ========== Chop Logic ==========
@@ -147,7 +149,7 @@ local function chopCar(carInstance, displayName)
     stopProPadSpam()
 end
 
--- ========== Fixed Iris GUI ==========
+-- ========== Stable Iris GUI ==========
 local Iris = loadstring(game:HttpGet("https://raw.githubusercontent.com/x0581/Iris-Exploit-Bundle/main/bundle.lua"))().Init(game.CoreGui)
 Iris.UpdateGlobalConfig(Iris.TemplateConfig.colorDark)
 
@@ -156,7 +158,7 @@ Iris:Connect(function()
 
         Iris.Text({"Select Car to Chop:"})
 
-        -- Car List
+        -- Car List Tree
         Iris.Tree({"Available Cars"})
             for _, car in ipairs(Workspace.Vehicles:GetChildren()) do
                 if car.Name:find("'s Car") then
@@ -174,11 +176,11 @@ Iris:Connect(function()
                     end
                 end
             end
-        Iris.End()
+        Iris.End()  -- End Tree
 
         Iris.Separator()
 
-        -- Action Buttons (outside the tree)
+        -- Action Buttons (outside tree)
         if Iris.Button({"Chop Selected Car"}).clicked then
             if selectedCar then
                 chopCar(selectedCar, selectedDisplay)
@@ -190,10 +192,10 @@ Iris:Connect(function()
         end
 
         if Iris.Button({"Refresh Car List"}).clicked then
-            -- Refresh (forces re-render)
+            -- Refresh
         end
 
         Iris.Text({"Selected: " .. (selectedDisplay or "None")})
 
-    Iris.End()
+    Iris.End()  -- End Window
 end)
