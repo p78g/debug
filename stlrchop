@@ -1,5 +1,5 @@
 --[[
-    Clean Car Chopper Script - Fixed Iris + Wheel Deletion
+    Car Chopper Script - With Redo Initial Setup Button
 --]]
 
 local Players = game:GetService("Players")
@@ -30,36 +30,45 @@ coroutine.wrap(function()
     end
 end)()
 
--- ========== Initial Sequence ==========
-ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ATM"):FireServer("Withdraw", 5050)
-task.wait(0.5)
+-- ========== Initial Setup Function ==========
+local function doInitialSetup()
+    ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ATM"):FireServer("Withdraw", 5050)
+    task.wait(0.5)
 
-ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ControllerRemote"):FireServer("/respawn")
-task.wait(1.6)
+    ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ControllerRemote"):FireServer("/respawn")
+    task.wait(1.6)
 
-local root = waitForCharacter():FindFirstChild("HumanoidRootPart")
-if root then root.CFrame = CFrame.new(1053, 54, -104) end
-task.wait(0.8)
+    local root = waitForCharacter():FindFirstChild("HumanoidRootPart")
+    if root then root.CFrame = CFrame.new(1053, 54, -104) end
+    task.wait(0.8)
 
-local gunPrompt = Workspace:FindFirstChild("Map", true) and Workspace.Map:FindFirstChild("GunStore", true) 
-    and Workspace.Map.GunStore:FindFirstChild("GunTable", true) 
-    and Workspace.Map.GunStore.GunTable:FindFirstChild("ProPad", true) 
-    and Workspace.Map.GunStore.GunTable.ProPad:FindFirstChild("Handle", true) 
-    and Workspace.Map.GunStore.GunTable.ProPad.Handle:FindFirstChild("ProximityPrompt")
+    -- GunStore prompt
+    local gunPrompt = Workspace:FindFirstChild("Map", true) 
+        and Workspace.Map:FindFirstChild("GunStore", true)
+        and Workspace.Map.GunStore:FindFirstChild("GunTable", true)
+        and Workspace.Map.GunStore.GunTable:FindFirstChild("ProPad", true)
+        and Workspace.Map.GunStore.GunTable.ProPad:FindFirstChild("Handle", true)
+        and Workspace.Map.GunStore.GunTable.ProPad.Handle:FindFirstChild("ProximityPrompt")
 
-if gunPrompt then
-    local targetPart = gunPrompt.Parent:IsA("BasePart") and gunPrompt.Parent or gunPrompt.Parent:FindFirstChildWhichIsA("BasePart")
-    if targetPart and root then
-        root.CFrame = CFrame.new(targetPart.Position + Vector3.new(0, 4, 0))
-        task.wait(0.4)
-        gunPrompt:InputHoldBegin()
-        task.wait(2)
-        gunPrompt:InputHoldEnd()
+    if gunPrompt then
+        local targetPart = gunPrompt.Parent:IsA("BasePart") and gunPrompt.Parent or gunPrompt.Parent:FindFirstChildWhichIsA("BasePart")
+        if targetPart and root then
+            root.CFrame = CFrame.new(targetPart.Position + Vector3.new(0, 4, 0))
+            task.wait(0.4)
+            gunPrompt:InputHoldBegin()
+            task.wait(2)
+            gunPrompt:InputHoldEnd()
+        end
     end
+
+    ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Buy"):FireServer("SkiMask", 50)
+    task.wait(0.5)
+
+    print("Initial Setup Completed")
 end
 
-ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Buy"):FireServer("SkiMask", 50)
-task.wait(0.5)
+-- Run initial setup once when script loads
+doInitialSetup()
 
 -- ========== Chop Logic ==========
 local selectedCar = nil
@@ -113,14 +122,19 @@ local function chopCar(carInstance, displayName)
 
     task.wait(13)
 
-    -- Delete wheels - safer method
-    local wheelsFolder = carInstance:FindFirstChild("Wheels")
-    if wheelsFolder then
-        for _, wheel in ipairs(wheelsFolder:GetChildren()) do
-            if wheel.Name == "FL" or wheel.Name == "FR" or wheel.Name == "RL" or wheel.Name == "RR" then
-                wheel:Destroy()
-            end
+    -- Delete wheels + extra handlers
+    local wheels = carInstance:FindFirstChild("Wheels")
+    if wheels then
+        for _, name in {"FL", "FR", "RL", "RR"} do
+            local wheel = wheels:FindFirstChild(name)
+            if wheel then wheel:Destroy() end
         end
+    end
+
+    local toDelete = {"VehicleSoundsEvent", "Friction", "ExhaustHandler", "MiscHandler"}
+    for _, name in ipairs(toDelete) do
+        local obj = carInstance:FindFirstChild(name)
+        if obj then obj:Destroy() end
     end
 
     -- Final safe spot + 20s anchor
@@ -136,7 +150,7 @@ local function chopCar(carInstance, displayName)
     stopProPadSpam()
 end
 
--- ========== Iris GUI (Fixed) ==========
+-- ========== Iris GUI ==========
 local Iris = loadstring(game:HttpGet("https://raw.githubusercontent.com/x0581/Iris-Exploit-Bundle/main/bundle.lua"))().Init(game.CoreGui)
 Iris.UpdateGlobalConfig(Iris.TemplateConfig.colorDark)
 
@@ -172,8 +186,12 @@ Iris:Connect(function()
             end
         end
 
+        if Iris.Button({"Redo Initial Setup"}).clicked then
+            doInitialSetup()
+        end
+
         if Iris.Button({"Refresh Car List"}).clicked then
-            -- Force refresh
+            -- Refresh
         end
 
         Iris.Text({"Selected: " .. (selectedDisplay or "None")})
