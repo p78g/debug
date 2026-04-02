@@ -1,5 +1,5 @@
 --[[
-    Car Chopper Script - Clean Version
+    Clean Car Chopper Script - Fixed Iris + Wheel Deletion
 --]]
 
 local Players = game:GetService("Players")
@@ -17,16 +17,6 @@ local function waitForCharacter()
         char = localPlayer.CharacterAdded:Wait()
     end
     return char
-end
-
-local function safeFind(instance, path)
-    if type(path) == "string" then path = path:split(".") end
-    local current = instance
-    for _, v in ipairs(path) do
-        if not current then return nil end
-        current = current:FindFirstChild(v)
-    end
-    return current
 end
 
 -- ========== Inventory Protection ==========
@@ -51,7 +41,12 @@ local root = waitForCharacter():FindFirstChild("HumanoidRootPart")
 if root then root.CFrame = CFrame.new(1053, 54, -104) end
 task.wait(0.8)
 
-local gunPrompt = safeFind(Workspace, {"Map", "GunStore", "GunTable", "ProPad", "Handle", "ProximityPrompt"})
+local gunPrompt = Workspace:FindFirstChild("Map", true) and Workspace.Map:FindFirstChild("GunStore", true) 
+    and Workspace.Map.GunStore:FindFirstChild("GunTable", true) 
+    and Workspace.Map.GunStore.GunTable:FindFirstChild("ProPad", true) 
+    and Workspace.Map.GunStore.GunTable.ProPad:FindFirstChild("Handle", true) 
+    and Workspace.Map.GunStore.GunTable.ProPad.Handle:FindFirstChild("ProximityPrompt")
+
 if gunPrompt then
     local targetPart = gunPrompt.Parent:IsA("BasePart") and gunPrompt.Parent or gunPrompt.Parent:FindFirstChildWhichIsA("BasePart")
     if targetPart and root then
@@ -73,7 +68,6 @@ local spamConnection = nil
 
 local function startProPadSpam(carInstance)
     if spamConnection then spamConnection:Disconnect() end
-
     spamConnection = RunService.Heartbeat:Connect(function()
         if carInstance and carInstance.Parent then
             local args = { carInstance, true }
@@ -117,14 +111,15 @@ local function chopCar(carInstance, displayName)
         rootPart.CFrame = driveSeat.CFrame + Vector3.new(0, 3, 0)
     end
 
-    task.wait(11)
+    task.wait(13)
 
-    -- Delete wheels
-    local wheels = carInstance:FindFirstChild("Wheels")
-    if wheels then
-        for _, name in {"FL", "FR", "RL", "RR"} do
-            local wheel = wheels:FindFirstChild(name)
-            if wheel then wheel:Destroy() end
+    -- Delete wheels - safer method
+    local wheelsFolder = carInstance:FindFirstChild("Wheels")
+    if wheelsFolder then
+        for _, wheel in ipairs(wheelsFolder:GetChildren()) do
+            if wheel.Name == "FL" or wheel.Name == "FR" or wheel.Name == "RL" or wheel.Name == "RR" then
+                wheel:Destroy()
+            end
         end
     end
 
@@ -141,7 +136,7 @@ local function chopCar(carInstance, displayName)
     stopProPadSpam()
 end
 
--- ========== Iris GUI ==========
+-- ========== Iris GUI (Fixed) ==========
 local Iris = loadstring(game:HttpGet("https://raw.githubusercontent.com/x0581/Iris-Exploit-Bundle/main/bundle.lua"))().Init(game.CoreGui)
 Iris.UpdateGlobalConfig(Iris.TemplateConfig.colorDark)
 
@@ -178,7 +173,7 @@ Iris:Connect(function()
         end
 
         if Iris.Button({"Refresh Car List"}).clicked then
-            -- Refresh does nothing extra, just forces GUI update
+            -- Force refresh
         end
 
         Iris.Text({"Selected: " .. (selectedDisplay or "None")})
