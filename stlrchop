@@ -55,7 +55,7 @@ local function doInitialSetup()
             root.CFrame = CFrame.new(targetPart.Position + Vector3.new(0, 4, 0))
             task.wait(0.4)
             gunPrompt:InputHoldBegin()
-            task.wait(2)
+            task.wait(1)
             gunPrompt:InputHoldEnd()
         end
     end
