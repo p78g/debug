@@ -125,7 +125,7 @@ local hitConnection = nil
 local selectedPlayerName = nil
 
 local ORBIT_RADIUS = 10
-local VERTICAL_OFFSET = -10        -- Under the target (increase to go lower)
+local VERTICAL_OFFSET = -2        -- Under the target (increase to go lower)
 local ANGULAR_SPEED = 20
 local ANCHOR_DELAY = 0.5
 
