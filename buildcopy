@@ -1,10 +1,9 @@
--- Town Build Copier - Back to Original Remote Structure
--- Using exact args you provided first
+-- Town Build Copier - Fixed Y Height (+5 studs above plot)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Build Copier - Original Remotes",
+    Name = "Town Build Copier - Y Height Fixed",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -27,7 +26,8 @@ end
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
 local localBuildFolder = localBuildArea:WaitForChild("Build")
 
-local baseHeight = 5
+local baseHeight = 5   -- This is what you wanted
+
 local selectedPlayer = nil
 local realOffsetX, realOffsetY, realOffsetZ = -28.637, -17.512, 0
 
@@ -60,8 +60,8 @@ Tab:CreateSlider({ Name = "Y Offset", Range = {-50, 150}, Increment = 0.01, Curr
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = realOffsetZ, Callback = function(v) realOffsetZ = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Original Remote Style)",
-    Description = "Using exact remote structures you first provided",
+    Name = "🔄 Copy Build (Y Height Fixed +5)",
+    Description = "Parts raised by 5 studs above plot",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "No player selected!"}) 
@@ -95,9 +95,10 @@ Tab:CreateButton({
         end
         local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
 
+        -- FIXED: Apply baseHeight + real Y offset
         local destOrigin = localBuildArea.Position + Vector3.new(realOffsetX, baseHeight + realOffsetY, realOffsetZ)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Starting with original remote style...", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Creating parts with +5 Y height...", Duration = 6})
 
         local createdParts = {}
 
@@ -117,43 +118,23 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            -- 1. CreatePart - Exact structure from your first message
-            local createArgs = {
-                "CreatePart",
-                partType,
-                CFrame.new(targetPos.X, targetPos.Y, targetPos.Z),
-                localBuildFolder
-            }
-            local newPart = remote:InvokeServer(unpack(createArgs))
+            -- CreatePart
+            local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- 2. SyncRotate - Exact from your log
-                local rotateArgs = {
-                    "SyncRotate",
-                    {{ Part = newPart, CFrame = sourcePart.CFrame }},
-                    { "AroundPivot", CFrame.new(0,0,0), "Center", CFrame.new(), "Center" }
-                }
-                remote:InvokeServer(unpack(rotateArgs))
-                task.wait(0.5)
+                -- Rotation (using source rotation)
+                local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
+                remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
+                task.wait(0.4)
 
-                -- 3. SyncMove
-                local moveArgs = {
-                    "SyncMove",
-                    {{ Part = newPart, CFrame = CFrame.new(targetPos.X, targetPos.Y, targetPos.Z) }},
-                    { "AlongFace", Vector3.new(0,0,0), "Global", CFrame.new(targetPos.X, targetPos.Y, targetPos.Z) }
-                }
-                remote:InvokeServer(unpack(moveArgs))
-                task.wait(0.5)
+                -- Move
+                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                task.wait(0.4)
 
-                -- 4. SyncResize (basic)
-                local resizeArgs = {
-                    "SyncResize",
-                    {{ Part = newPart, CFrame = CFrame.new(targetPos), Size = sourcePart.Size }},
-                    { "ResizeFace", Enum.NormalId.Right, 0, Vector3.new(0,0,0), "X", Vector3.xAxis, "Normal" }
-                }
-                remote:InvokeServer(unpack(resizeArgs))
+                -- Resize
+                remote:InvokeServer("SyncResize", {{Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size}}, {"ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal"})
                 task.wait(0.5)
             end
         end
@@ -162,7 +143,7 @@ Tab:CreateButton({
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 8})
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created with +5 Y height", Duration = 8})
     end,
 })
 
@@ -171,4 +152,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Original Remote Version Loaded", Content = "Using exact structures from your first message", Duration = 8})
+Rayfield:Notify({Title = "Y Height Fixed", Content = "Parts should now spawn +5 studs above plot", Duration = 8})
