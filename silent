@@ -1,71 +1,26 @@
--- Load Rayfield
+-- Load Rayfield (official repo)
 local Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"))()
 
--- Services & basic setup
+-- Services
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- ========== Settings (linked to GUI) ==========
+-- Settings (controlled by Rayfield)
 local Settings = {
     Enabled = true,
-    FOV = 200,          -- FOV radius in pixels
-    TargetPart = "Head" -- Body part to aim at
+    FOV = 150,
+    TargetPart = "Head",
 }
 
--- ========== FOV Circle UI ==========
-local fovGui = Instance.new("ScreenGui")
-fovGui.Name = "SilentAimFOV"
-fovGui.ResetOnSpawn = false
-fovGui.Parent = game:GetService("CoreGui")
-
-local fovCircle = Instance.new("Frame")
-fovCircle.BackgroundTransparency = 1
-fovCircle.BorderSizePixel = 0
-fovCircle.Size = UDim2.fromOffset(Settings.FOV * 2, Settings.FOV * 2)
-fovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
-fovCircle.Parent = fovGui
-
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(1, 0)
-corner.Parent = fovCircle
-
-local stroke = Instance.new("UIStroke")
-stroke.Color = Color3.fromRGB(255, 255, 255)
-stroke.Thickness = 1.2
-stroke.Transparency = 0.3
-stroke.Parent = fovCircle
-
--- Optional red dot at the mouse cursor
-local dot = Instance.new("Frame")
-dot.Size = UDim2.fromOffset(8, 8)
-dot.AnchorPoint = Vector2.new(0.5, 0.5)
-dot.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-dot.BorderSizePixel = 0
-dot.Visible = false
-dot.ZIndex = 2
-dot.Parent = fovGui
-
-local dotCorner = Instance.new("UICorner")
-dotCorner.CornerRadius = UDim.new(1, 0)
-dotCorner.Parent = dot
-
--- Update FOV circle size when slider changes
-local function updateFOVSize()
-    fovCircle.Size = UDim2.fromOffset(Settings.FOV * 2, Settings.FOV * 2)
-end
-
--- ========== Silent Aim Logic ==========
--- Finds the closest target relative to the mouse position and current FOV.
--- Returns the target part (Head, UpperTorso, etc.) and its screen position.
+-- Silent aim logic (same as the original script)
 local function getClosestTarget()
-    if not Settings.Enabled then return nil, nil end
+    if not Settings.Enabled then return nil end
     local mousePos = UserInputService:GetMouseLocation()
     local bestDist = Settings.FOV
-    local bestPart = nil
-    local bestScreen = nil
+    local bestTarget = nil
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character then
@@ -77,111 +32,74 @@ local function getClosestTarget()
                     local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
                     if dist < bestDist then
                         bestDist = dist
-                        bestPart = targetPart
-                        bestScreen = Vector2.new(screenPos.X, screenPos.Y)
+                        bestTarget = targetPart
                     end
                 end
             end
         end
     end
-    return bestPart, bestScreen
+    return bestTarget
 end
 
--- Hook into the game's projectile system (same as the original script)
+-- Hook into the game's projectile system (exactly like the raw script)
 local function hookProjectiles()
     local success, Projectile = pcall(require, 
         game:GetService("ReplicatedStorage").Modules.GunFramework.Modules.Projectile
     )
     if not success then
-        warn("[Rayfield Silent Aim] Projectile module not found – aimbot will not work.")
+        warn("[Rayfield] Projectile module not found. Aimbot will not work.")
         return
     end
-
+    
     local originalNew = Projectile.new
     Projectile.new = function(params)
         if params and params.Origin and params.Direction and Settings.Enabled then
             local target = getClosestTarget()
             if target then
-                -- Redirect the projectile toward the chosen body part
                 params.Direction = (target.Position - params.Origin).Unit
             end
         end
         return originalNew(params)
     end
-    print("[Rayfield Silent Aim] Successfully hooked into projectile system.")
+    print("[Rayfield] Silent aim hooked successfully.")
 end
-
 hookProjectiles()
 
--- ========== Visual Update Loop ==========
-RunService.RenderStepped:Connect(function()
-    local mousePos = UserInputService:GetMouseLocation()
-    fovCircle.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
-
-    local target, screenPos = getClosestTarget()
-    if target and screenPos and Settings.Enabled then
-        dot.Visible = true
-        dot.Position = UDim2.fromOffset(screenPos.X, screenPos.Y)
-        stroke.Color = Color3.fromRGB(255, 50, 50)   -- Red = target inside FOV
-    else
-        dot.Visible = false
-        stroke.Color = Color3.fromRGB(255, 255, 255) -- White = no target
-    end
-end)
-
--- ========== Rayfield Menu ==========
-local window = Rayfield:CreateWindow({
-    Name = "Silent Aim Control",
-    Icon = 0,  -- Optional: use an image ID
-    LoadingTitle = "Loading Aimbot",
-    LoadingSubtitle = "by YourScript",
-    Theme = "Default"
+-- Create Rayfield window
+local Window = Rayfield:CreateWindow({
+    Name = "Silent Aim",
+    LoadingTitle = "Aimbot",
+    Theme = "Default",
 })
 
-local mainTab = window:CreateTab("Aimbot")
+local MainTab = Window:CreateTab("Aimbot")
 
--- Toggle: Enable / Disable Silent Aim
-mainTab:CreateToggle({
+MainTab:CreateToggle({
     Name = "Enable Silent Aim",
     CurrentValue = Settings.Enabled,
-    Flag = "ToggleAim",
-    Callback = function(Value)
-        Settings.Enabled = Value
-        print("[Silent Aim] Enabled:", Value)
-    end
+    Callback = function(v)
+        Settings.Enabled = v
+    end,
 })
 
--- Slider: Adjust FOV radius
-mainTab:CreateSlider({
-    Name = "FOV Radius (px)",
+MainTab:CreateSlider({
+    Name = "FOV Radius",
     Range = {50, 400},
     Increment = 1,
     Suffix = "px",
     CurrentValue = Settings.FOV,
-    Flag = "FOVSlider",
-    Callback = function(Value)
-        Settings.FOV = Value
-        updateFOVSize()
-        print("[Silent Aim] FOV set to:", Value)
-    end
+    Callback = function(v)
+        Settings.FOV = v
+    end,
 })
 
--- Dropdown: Choose body part to target
-mainTab:CreateDropdown({
+MainTab:CreateDropdown({
     Name = "Target Body Part",
     Options = {"Head", "UpperTorso", "LowerTorso", "HumanoidRootPart"},
     CurrentOption = Settings.TargetPart,
-    Flag = "BodyPart",
-    Callback = function(Option)
-        Settings.TargetPart = Option
-        print("[Silent Aim] Target part changed to:", Option)
-    end
+    Callback = function(v)
+        Settings.TargetPart = v
+    end,
 })
 
--- Informational paragraph
-mainTab:CreateParagraph({
-    Name = "How to use",
-    Content = "• FOV circle follows your mouse\n• Red = enemy inside FOV\n• Works with guns and projectile weapons\n• Aimbot is active only when toggle is ON"
-})
-
-print("Rayfield menu loaded successfully. Use it to control silent aim.")
+print("Rayfield menu loaded. Use it to control silent aim.")
