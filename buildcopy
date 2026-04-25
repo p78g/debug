@@ -1,5 +1,5 @@
 -- =============================================
--- BUILD COPIER – Exact Remote Calls + Your Offsets
+-- BUILD COPIER – Exact Remote Calls + 0.5s Delays
 -- =============================================
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
@@ -13,21 +13,20 @@ local Window = Rayfield:CreateWindow({
 local MainTab = Window:CreateTab("Copy Build")
 MainTab:CreateSection("Correction Offsets (applied after auto‑centre)")
 
--- Your measured offsets
 local xOffset = -28.637
 local zOffset = -17.512
-local yExtra = 5
+local yExtra = 0
 
 MainTab:CreateSlider({ Name = "X Offset (left/right)", Range = {-100, 100}, Increment = 0.5, CurrentValue = xOffset, Callback = function(v) xOffset = v end })
 MainTab:CreateSlider({ Name = "Z Offset (forward/back)", Range = {-100, 100}, Increment = 0.5, CurrentValue = zOffset, Callback = function(v) zOffset = v end })
 MainTab:CreateSlider({ Name = "Extra Y Offset (up/down)", Range = {-10, 10}, Increment = 0.5, CurrentValue = 0, Callback = function(v) yExtra = v end })
 
 MainTab:CreateButton({
-    Name = "Reset to Your Measured Offsets",
+    Name = "Reset to Measured Offsets",
     Callback = function()
         xOffset = -28.637
         zOffset = -17.512
-        yExtra = 5
+        yExtra = 0
         Rayfield:Notify({ Title = "Offsets Reset", Content = "X: -28.637, Z: -17.512, Y: 0" })
     end
 })
@@ -68,7 +67,7 @@ local function clearLocalBuild()
     end
 end
 
--- Auto‑centre: average of all part positions (recursive)
+-- Auto‑centre: average of all part positions
 local function computeCentre(buildArea)
     local buildFolder = buildArea:FindFirstChild("Build")
     if not buildFolder then return buildArea.Position end
@@ -103,17 +102,14 @@ local function getRemote()
     return remote
 end
 
--- Copy a single part using EXACT remote structures (from your examples)
+-- Copy single part with 0.5s delays after rotate, move, resize
 local function copySinglePart(part, srcOrigin, dstOrigin, dstBuild)
-    -- Part type mapping
     local typeMap = {
         Part = "Normal", Truss = "Truss", Wedge = "Wedge", Corner = "Corner",
         Cylinder = "Cylinder", Ball = "Ball", Seat = "Seat",
         ["Vehicle Seat"] = "Vehicle Seat", Spawn = "Spawn"
     }
     local partType = typeMap[part.Name] or "Normal"
-
-    -- Offset and target position/CFrame
     local offset = part.Position - srcOrigin
     local targetPos = dstOrigin + offset
     local targetCFrame = CFrame.new(targetPos) * (part.CFrame - part.CFrame.Position)
@@ -121,7 +117,7 @@ local function copySinglePart(part, srcOrigin, dstOrigin, dstBuild)
     local r = getRemote()
     if not r then return nil end
 
-    -- 1. CreatePart
+    -- Create
     local createArgs = {"CreatePart", partType, CFrame.new(dstOrigin), dstBuild}
     local ok, newPart = pcall(function() return r:InvokeServer(unpack(createArgs)) end)
     if not ok or not newPart then return nil end
@@ -131,39 +127,40 @@ local function copySinglePart(part, srcOrigin, dstOrigin, dstBuild)
     if not actualPart:IsA("BasePart") then actualPart = dstBuild:FindFirstChild(part.Name) end
     if not actualPart then return nil end
 
-    -- 2. SyncRotate – exactly as in your example
-    local pivotCFrame = targetCFrame - targetCFrame.Position  -- rotation only
-    local currentCFrame = CFrame.new(dstOrigin)              -- part's current CFrame (at centre, no rotation)
+    -- Rotate
+    local pivotCFrame = targetCFrame - targetCFrame.Position
+    local currentCFrame = CFrame.new(dstOrigin)
     local rotArgs = {
         "SyncRotate",
         { { Part = actualPart, CFrame = targetCFrame } },
         { "AroundPivot", pivotCFrame, "Center", currentCFrame, "Center" }
     }
     pcall(function() r:InvokeServer(unpack(rotArgs)) end)
-    task.wait(0.1)
+    task.wait(0.5)  -- delay after rotate
 
-    -- 3. SyncMove – exactly as in your example
-    local delta = targetPos - dstOrigin   -- how far to move
+    -- Move
+    local delta = targetPos - dstOrigin
     local moveArgs = {
         "SyncMove",
         { { Part = actualPart, CFrame = CFrame.new(targetPos) } },
         { "AlongFace", delta, "Global", CFrame.new(targetPos) }
     }
     pcall(function() r:InvokeServer(unpack(moveArgs)) end)
-    task.wait(0.1)
+    task.wait(0.5)  -- delay after move
 
-    -- 4. SyncResize – exactly as in your example (dummy resize that sets the final size)
+    -- Resize
     local resizeArgs = {
         "SyncResize",
         { { Part = actualPart, CFrame = CFrame.new(targetPos), Size = part.Size } },
         { "ResizeFace", Enum.NormalId.Front, 1, Vector3.new(0,0,0), "Z", part.Size, "Normal" }
     }
     pcall(function() r:InvokeServer(unpack(resizeArgs)) end)
+    task.wait(0.5)  -- delay after resize
 
     return actualPart
 end
 
--- Copy the entire build (recursive through models)
+-- Copy full build
 local function copyRealBuild()
     if not selectedPlayer then
         Rayfield:Notify({ Title = "Error", Content = "Select a player." })
@@ -185,14 +182,11 @@ local function copyRealBuild()
         return
     end
 
-    -- Auto centre from source
     local srcCentre = computeCentre(srcBA)
     local baseY = 3 + yExtra
     local srcOrigin = srcCentre + Vector3.new(0, baseY, 0)
-    -- Destination origin = your plot's base position + manual corrections
     local dstOrigin = dstBA.Position + Vector3.new(xOffset, baseY, zOffset)
 
-    -- Collect all BaseParts recursively
     local allParts = {}
     local function collect(obj)
         for _, child in ipairs(obj:GetChildren()) do
@@ -218,12 +212,12 @@ local function copyRealBuild()
         if copySinglePart(part, srcOrigin, dstOrigin, dstBuild) then
             successCount = successCount + 1
         end
-        task.wait(0.05)
+        task.wait(0.1) -- small delay between parts
     end
     Rayfield:Notify({ Title = "Complete", Content = successCount .. "/" .. #allParts .. " parts copied." })
 end
 
--- Ghost preview (no remotes, same offsets)
+-- Ghost preview (same offsets, no remotes)
 local ghostModel = nil
 local function showGhost()
     if ghostModel then ghostModel:Destroy() end
@@ -273,14 +267,14 @@ local function showGhost()
     end
     cloneParts(srcBuild)
     ghostModel.Parent = workspace
-    Rayfield:Notify({ Title = "Ghost Preview", Content = "Auto-centre + your offsets applied." })
+    Rayfield:Notify({ Title = "Ghost Preview", Content = "Offsets applied. Adjust sliders if needed." })
 end
 
 local function hideGhost()
     if ghostModel then ghostModel:Destroy() end
 end
 
--- Build UI
+-- UI
 local initOpts = refreshPlayers()
 dropdown = MainTab:CreateDropdown({
     Name = "Select Player",
@@ -300,4 +294,4 @@ MainTab:CreateButton({ Name = "Refresh Players", Callback = function()
     if newOpts[1] then dropdown:SetValue(newOpts[1]); selectedPlayer = newOpts[1] end
 end })
 
-Rayfield:Notify({ Title = "Ready", Content = "Auto-centre + correction offsets X=-28.637, Z=-17.512. Show ghost to verify." })
+Rayfield:Notify({ Title = "Ready", Content = "Auto-centre + offsets X=-28.637, Z=-17.512. 0.5s delays added." })
