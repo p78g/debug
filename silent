@@ -1,4 +1,10 @@
--- // Load Rayfield GUI Library
+-- // Destroy any leftover Iris GUI (to prevent conflicts)
+pcall(function()
+    local irisGui = game.CoreGui:FindFirstChild("Iris")
+    if irisGui then irisGui:Destroy() end
+end)
+
+-- // Load Rayfield
 local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/shlexware/Rayfield/main/source'))()
 
 -- // Services
@@ -42,7 +48,7 @@ local function updateFOVCircle()
     fovCircle.Size = UDim2.fromOffset(Settings.FOV_Size * 2, Settings.FOV_Size * 2)
 end
 
--- // Silent Aim Core (based on the raw script)
+-- // Silent Aim Core
 local function getClosestTarget()
     if not Settings.Enabled then return nil end
     local mousePos = UserInputService:GetMouseLocation()
@@ -68,7 +74,7 @@ local function getClosestTarget()
     return bestTarget
 end
 
--- // Hook the game's projectile system
+-- Hook the projectile module
 local function hookProjectile()
     local success, Projectile = pcall(require, game:GetService("ReplicatedStorage").Modules.GunFramework.Modules.Projectile)
     if success then
@@ -83,14 +89,14 @@ local function hookProjectile()
             end
             return originalNew(params)
         end
-        print("Silent aim hooked successfully!")
+        print("[Silent Aim] Hooked successfully!")
     else
-        warn("Projectile module not found – silent aim will not work.")
+        warn("[Silent Aim] Projectile module not found – aimbot will not work.")
     end
 end
 hookProjectile()
 
--- // Update FOV circle position and color
+-- Update FOV circle position and color
 RunService.RenderStepped:Connect(function()
     local mousePos = UserInputService:GetMouseLocation()
     fovCircle.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
@@ -105,53 +111,45 @@ end)
 -- // ==================== RAYFIELD GUI ====================
 local Window = Rayfield:CreateWindow({
     Name = "Silent Aim Control",
-    Icon = 0, -- nil for no icon
     LoadingTitle = "Loading...",
-    LoadingSubtitle = "",
+    LoadingSubtitle = "by Script",
     Theme = "Default",
 })
 
-local MainTab = Window:CreateTab("Aimbot", 4483362458) -- 4483362458 = gun icon (optional)
+local MainTab = Window:CreateTab("Aimbot")
 
--- Toggle
 MainTab:CreateToggle({
     Name = "Enable Silent Aim",
     CurrentValue = Settings.Enabled,
-    Flag = "SilentAimEnabled",
     Callback = function(Value)
         Settings.Enabled = Value
     end,
 })
 
--- Slider for FOV
 MainTab:CreateSlider({
     Name = "FOV Radius",
     Range = {50, 400},
     Increment = 1,
     Suffix = "px",
     CurrentValue = Settings.FOV_Size,
-    Flag = "FOVSlider",
     Callback = function(Value)
         Settings.FOV_Size = Value
         updateFOVCircle()
     end,
 })
 
--- Dropdown for body part
 MainTab:CreateDropdown({
     Name = "Target Body Part",
     Options = {"Head", "UpperTorso", "LowerTorso", "HumanoidRootPart"},
     CurrentOption = Settings.TargetPart,
-    Flag = "BodyPart",
     Callback = function(Option)
         Settings.TargetPart = Option
     end,
 })
 
--- Info label
 MainTab:CreateParagraph({
     Name = "Info",
-    Content = "FOV Circle: Red = target inside, White = none\nWorks with projectile weapons."
+    Content = "FOV Circle: Red = target inside, White = none\nWorks with projectile weapons only."
 })
 
-print("Rayfield GUI loaded. Use the window to control silent aim.")
+print("[Rayfield] GUI loaded successfully!")
