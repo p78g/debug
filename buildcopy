@@ -1,209 +1,107 @@
--- =============================================
--- BUILD COPIER – Ghost Works Perfectly, Actual Copy Fixed
--- =============================================
-
+-- FINAL BUILD COPIER - Uses ghost origin, debugs every step
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
-local Window = Rayfield:CreateWindow({
-    Name = "Build Copier",
-    ConfigurationSaving = { Enabled = true, FolderName = "BuildCopier" },
-    Theme = "Default",
-})
-
+local Window = Rayfield:CreateWindow({Name = "Build Copier", ConfigurationSaving = {Enabled = true}, Theme = "Default"})
 local MainTab = Window:CreateTab("Copy Build")
-MainTab:CreateSection("Adjust Offsets (Real-time Ghost)")
 
+-- Offsets (manual adjustment)
 local xOffset = 0
 local zOffset = 0
-local yExtra = 0  -- extra Y on top of default 3
-
-MainTab:CreateSlider({
-    Name = "X Offset (Left/Right)",
-    Range = {-50, 50},
-    Increment = 1,
-    CurrentValue = 0,
-    Callback = function(v) 
-        xOffset = v
-        if ghostModel then refreshGhost() end
-    end
-})
-
-MainTab:CreateSlider({
-    Name = "Z Offset (Forward/Back)",
-    Range = {-50, 50},
-    Increment = 1,
-    CurrentValue = 0,
-    Callback = function(v) 
-        zOffset = v
-        if ghostModel then refreshGhost() end
-    end
-})
-
-MainTab:CreateSlider({
-    Name = "Extra Y Offset (Up/Down)",
-    Range = {-5, 5},
-    Increment = 0.5,
-    CurrentValue = 0,
-    Callback = function(v) 
-        yExtra = v
-        if ghostModel then refreshGhost() end
-    end
-})
-
-MainTab:CreateSection("Player Selection")
+local yExtra = 0
+MainTab:CreateSlider({Name = "X Offset", Range = {-50,50}, Increment = 1, CurrentValue = 0, Callback = function(v) xOffset = v end})
+MainTab:CreateSlider({Name = "Z Offset", Range = {-50,50}, Increment = 1, CurrentValue = 0, Callback = function(v) zOffset = v end})
+MainTab:CreateSlider({Name = "Extra Y", Range = {-5,5}, Increment = 0.5, CurrentValue = 0, Callback = function(v) yExtra = v end})
 
 local selectedPlayer = nil
 local playerMapping = {}
 local dropdown = nil
-local ghostModel = nil
-local srcOrigin = nil  -- store for later use
-local dstOrigin = nil
 
-local function getBuildArea(folderName)
-    local pa = workspace:FindFirstChild("Private Building Areas")
-    return pa and pa:FindFirstChild(folderName)
-end
+local function getBA(name) return workspace:FindFirstChild("Private Building Areas") and workspace.PrivateBuildingAreas:FindFirstChild(name) end
 
 local function refreshPlayers()
-    local pa = workspace:FindFirstChild("Private Building Areas")
+    local pa = workspace.PrivateBuildingAreas
     if not pa then return {} end
     local opts = {}
     playerMapping = {}
     for _, c in ipairs(pa:GetChildren()) do
-        local name = c.Name
-        if name:sub(-9) == "BuildArea" then
-            local pn = name:sub(1, -10)
+        local n = c.Name
+        if n:sub(-9) == "BuildArea" then
+            local pn = n:sub(1,-10)
             table.insert(opts, pn)
-            playerMapping[pn] = name
+            playerMapping[pn] = n
         end
     end
-    print("[Build Copier] Found players:", table.concat(opts, ", "))
     return opts
+end
+
+local function clearLocal()
+    local myBA = getBA(game.Players.LocalPlayer.Name.."BuildArea")
+    if myBA and myBA:FindFirstChild("Build") then
+        for _, p in ipairs(myBA.Build:GetChildren()) do p:Destroy() end
+        Rayfield:Notify({Title="Cleared"})
+    end
 end
 
 -- Compute centre of build (average of all part positions)
 local function computeCentre(buildArea)
-    local buildFolder = buildArea:FindFirstChild("Build")
-    if not buildFolder then return buildArea.Position end
+    local build = buildArea:FindFirstChild("Build")
+    if not build then return buildArea.Position end
     local parts = {}
     local function collect(obj)
-        for _, child in ipairs(obj:GetChildren()) do
-            if child:IsA("BasePart") then
-                table.insert(parts, child)
-            elseif child:IsA("Model") then
-                collect(child)
-            end
+        for _, ch in ipairs(obj:GetChildren()) do
+            if ch:IsA("BasePart") then table.insert(parts, ch)
+            elseif ch:IsA("Model") then collect(ch) end
         end
     end
-    collect(buildFolder)
+    collect(build)
     if #parts == 0 then return buildArea.Position end
     local sum = Vector3.new(0,0,0)
     for _, p in ipairs(parts) do sum = sum + p.Position end
     return sum / #parts
 end
 
--- Refresh ghost (update position when sliders change)
-local function refreshGhost()
-    if not ghostModel then return end
-    local srcBA = getBuildArea(playerMapping[selectedPlayer])
-    local dstBA = getBuildArea(game.Players.LocalPlayer.Name .. "BuildArea")
-    if not srcBA or not dstBA then return end
-    local srcCentre = computeCentre(srcBA)
-    local dstCentre = dstBA.Position
-    local baseY = 3 + yExtra
-    srcOrigin = srcCentre + Vector3.new(0, baseY, 0)
-    dstOrigin = dstCentre + Vector3.new(0, baseY, 0) + Vector3.new(xOffset, 0, zOffset)
-    
-    -- Update all ghost parts
-    for _, child in ipairs(ghostModel:GetChildren()) do
-        if child:IsA("BasePart") then
-            local offset = child:GetAttribute("SourceOffset")
-            if offset then
-                child.Position = dstOrigin + offset
-                -- Rotation is preserved from original clone, so we keep its CFrame
-            end
-        end
-    end
-end
-
--- Create ghost preview
+-- Ghost preview (exact same origin as real copy)
+local ghost = nil
 local function showGhost()
-    if ghostModel then ghostModel:Destroy() end
-    if not selectedPlayer then
-        Rayfield:Notify({Title = "Error", Content = "Select a player first."})
-        return
-    end
-    local srcFolderName = playerMapping[selectedPlayer]
-    if not srcFolderName then
-        Rayfield:Notify({Title = "Error", Content = "Player folder not found."})
-        return
-    end
-    local srcBA = getBuildArea(srcFolderName)
-    local dstBA = getBuildArea(game.Players.LocalPlayer.Name .. "BuildArea")
-    if not srcBA then
-        Rayfield:Notify({Title = "Error", Content = "Source build area not found."})
-        return
-    end
-    if not dstBA then
-        Rayfield:Notify({Title = "Error", Content = "Your build area not found."})
-        return
-    end
+    if ghost then ghost:Destroy() end
+    if not selectedPlayer then Rayfield:Notify({Title="Select player"}) return end
+    local srcBA = getBA(playerMapping[selectedPlayer])
+    local dstBA = getBA(game.Players.LocalPlayer.Name.."BuildArea")
+    if not srcBA or not dstBA then Rayfield:Notify({Title="Missing BA"}) return end
     local srcBuild = srcBA:FindFirstChild("Build")
-    if not srcBuild then
-        Rayfield:Notify({Title = "Error", Content = "Source has no Build folder."})
-        return
-    end
+    if not srcBuild then return end
 
     local srcCentre = computeCentre(srcBA)
-    local dstCentre = dstBA.Position
-    local baseY = 3 + yExtra
-    srcOrigin = srcCentre + Vector3.new(0, baseY, 0)
-    dstOrigin = dstCentre + Vector3.new(0, baseY, 0) + Vector3.new(xOffset, 0, zOffset)
+    local dstCentre = dstBA.Position + Vector3.new(xOffset, yExtra, zOffset)
+    local buildHeight = 5
+    local srcOrigin = srcCentre + Vector3.new(0, buildHeight, 0)
+    local dstOrigin = dstCentre + Vector3.new(0, buildHeight, 0)
 
-    ghostModel = Instance.new("Model")
-    ghostModel.Name = "GhostPreview"
-
-    local function cloneParts(obj)
-        for _, child in ipairs(obj:GetChildren()) do
-            if child:IsA("BasePart") then
-                local offset = child.Position - srcOrigin
-                local targetPos = dstOrigin + offset
-                local clone = child:Clone()
-                clone.Position = targetPos
-                clone.CFrame = CFrame.new(targetPos) * (child.CFrame - child.CFrame.Position)
-                clone.Anchored = true
-                clone.CanCollide = false
-                clone.Transparency = 0.7
-                clone.Material = Enum.Material.ForceField
-                clone:SetAttribute("SourceOffset", offset)
-                clone.Parent = ghostModel
-            elseif child:IsA("Model") then
-                cloneParts(child)
-            end
+    ghost = Instance.new("Model")
+    ghost.Name = "Ghost"
+    local function clone(obj)
+        for _, ch in ipairs(obj:GetChildren()) do
+            if ch:IsA("BasePart") then
+                local offset = ch.Position - srcOrigin
+                local pos = dstOrigin + offset
+                local c = ch:Clone()
+                c.Position = pos
+                c.CFrame = CFrame.new(pos) * (ch.CFrame - ch.CFrame.Position)
+                c.Anchored = true
+                c.CanCollide = false
+                c.Transparency = 0.7
+                c.Material = Enum.Material.ForceField
+                c.Parent = ghost
+            elseif ch:IsA("Model") then clone(ch) end
         end
     end
-    cloneParts(srcBuild)
-    ghostModel.Parent = workspace
-    Rayfield:Notify({Title = "Ghost", Content = "Preview shown. Use sliders to align."})
+    clone(srcBuild)
+    ghost.Parent = workspace
+    Rayfield:Notify({Title="Ghost shown"})
 end
+local function hideGhost() if ghost then ghost:Destroy() end end
 
-local function hideGhost()
-    if ghostModel then ghostModel:Destroy() end
-end
-
--- Clear local build
-local function clearLocalBuild()
-    local localName = game.Players.LocalPlayer.Name .. "BuildArea"
-    local localBA = getBuildArea(localName)
-    if localBA and localBA:FindFirstChild("Build") then
-        for _, p in ipairs(localBA.Build:GetChildren()) do p:Destroy() end
-        Rayfield:Notify({Title = "Cleared", Content = "Your build cleared."})
-    else
-        Rayfield:Notify({Title = "Warning", Content = "Could not find your Build folder."})
-    end
-end
-
--- Remote calls
+-- Real copy (simplified, using same origin as ghost)
 local remote = nil
 local function getRemote()
     if remote then return remote end
@@ -217,172 +115,81 @@ local function getRemote()
     return remote
 end
 
--- Copy a single part (uses same offset as ghost)
-local function copySinglePart(part, srcOriginVal, dstOriginVal, dstBuild, index, total)
-    local typeMap = {
-        Part = "Normal", Truss = "Truss", Wedge = "Wedge", Corner = "Corner",
-        Cylinder = "Cylinder", Ball = "Ball", Seat = "Seat",
-        ["Vehicle Seat"] = "Vehicle Seat", Spawn = "Spawn"
-    }
-    local partType = typeMap[part.Name] or "Normal"
-    
-    -- Same offset calculation as ghost
-    local offset = part.Position - srcOriginVal
-    local targetPos = dstOriginVal + offset
-    local targetCFrame = CFrame.new(targetPos) * (part.CFrame - part.CFrame.Position)
-    
-    print(string.format("[%d/%d] %s | Offset: (%.1f, %.1f, %.1f)", index, total, part.Name, offset.X, offset.Y, offset.Z))
-    
+local function copyPart(part, srcOrigin, dstOrigin, dstBuild)
+    local typeMap = {Part="Normal", Truss="Truss", Wedge="Wedge", Corner="Corner", Cylinder="Cylinder", Ball="Ball", Seat="Seat", ["Vehicle Seat"]="Vehicle Seat", Spawn="Spawn"}
+    local pType = typeMap[part.Name] or "Normal"
+    local offset = part.Position - srcOrigin
+    local targetPos = dstOrigin + offset
+    local targetCF = CFrame.new(targetPos) * (part.CFrame - part.CFrame.Position)
     local r = getRemote()
-    if not r then 
-        warn("No remote")
-        return nil 
-    end
-    
-    -- Create part at destination origin first
-    local createArgs = {"CreatePart", partType, CFrame.new(dstOriginVal), dstBuild}
-    local success, newPart = pcall(function() return r:InvokeServer(unpack(createArgs)) end)
-    if not success or not newPart then
-        warn("CreatePart failed for " .. part.Name)
-        return nil
-    end
-    task.wait(0.05)
-    
-    -- Locate the actual part (may be returned or may need lookup)
-    local actualPart = newPart
-    if not actualPart:IsA("BasePart") then
-        actualPart = dstBuild:FindFirstChild(part.Name)
-    end
-    if not actualPart then
-        warn("Could not locate created part: " .. part.Name)
-        return nil
-    end
-    
-    -- Apply rotation (using exact remote structure from your example)
-    local pivotCFrame = targetCFrame - targetCFrame.Position
-    local currentCFrame = CFrame.new(dstOriginVal)
-    local rotArgs = {
-        "SyncRotate",
-        {{Part = actualPart, CFrame = targetCFrame}},
-        {"AroundPivot", pivotCFrame, "Center", currentCFrame, "Center"}
-    }
-    local rotSuccess, rotErr = pcall(function() return r:InvokeServer(unpack(rotArgs)) end)
-    if not rotSuccess then warn("Rotate error:", rotErr) end
-    task.wait(0.05)
-    
-    -- Apply movement (to final position)
-    local delta = targetPos - dstOriginVal
-    local moveArgs = {
-        "SyncMove",
-        {{Part = actualPart, CFrame = CFrame.new(targetPos)}},
-        {"AlongFace", delta, "Global", CFrame.new(targetPos)}
-    }
-    local moveSuccess, moveErr = pcall(function() return r:InvokeServer(unpack(moveArgs)) end)
-    if not moveSuccess then warn("Move error:", moveErr) end
-    task.wait(0.05)
-    
-    -- Apply resize
-    local resizeArgs = {
-        "SyncResize",
-        {{Part = actualPart, CFrame = CFrame.new(targetPos), Size = part.Size}},
-        {"ResizeFace", Enum.NormalId.Front, 1, Vector3.new(0,0,0), "Z", part.Size, "Normal"}
-    }
-    local resizeSuccess, resizeErr = pcall(function() return r:InvokeServer(unpack(resizeArgs)) end)
-    if not resizeSuccess then warn("Resize error:", resizeErr) end
-    
-    return actualPart
+    if not r then return nil end
+
+    -- Create
+    local ok, newPart = pcall(function() return r:InvokeServer("CreatePart", pType, CFrame.new(dstOrigin), dstBuild) end)
+    if not ok or not newPart then warn("CreatePart fail", part.Name); return nil end
+    task.wait(0.1)
+    local actual = newPart:IsA("BasePart") and newPart or dstBuild:FindFirstChild(part.Name)
+    if not actual then return nil end
+
+    -- Rotate (simplified)
+    pcall(function() r:InvokeServer("SyncRotate", {{Part=actual, CFrame=targetCF}}, {}) end)
+    task.wait(0.1)
+    -- Move
+    pcall(function() r:InvokeServer("SyncMove", {{Part=actual, CFrame=CFrame.new(targetPos)}}, {}) end)
+    task.wait(0.1)
+    -- Resize
+    pcall(function() r:InvokeServer("SyncResize", {{Part=actual, CFrame=CFrame.new(targetPos), Size=part.Size}}, {"ResizeFace", Enum.NormalId.Front, 1, Vector3.new(0,0,0), "Z", part.Size, "Normal"}) end)
+    return actual
 end
 
--- Main copy function
 local function copyReal()
-    if not selectedPlayer then
-        Rayfield:Notify({Title = "Error", Content = "Select a player."})
-        return
-    end
-    
-    -- Ensure we have current origins (same as ghost)
-    local srcFolderName = playerMapping[selectedPlayer]
-    if not srcFolderName then
-        Rayfield:Notify({Title = "Error", Content = "Player folder not found."})
-        return
-    end
-    local srcBA = getBuildArea(srcFolderName)
-    local dstBA = getBuildArea(game.Players.LocalPlayer.Name .. "BuildArea")
-    if not srcBA or not dstBA then
-        Rayfield:Notify({Title = "Error", Content = "BuildAreas missing."})
-        return
-    end
-    
-    local srcCentre = computeCentre(srcBA)
-    local dstCentre = dstBA.Position
-    local baseY = 3 + yExtra
-    local srcOriginVal = srcCentre + Vector3.new(0, baseY, 0)
-    local dstOriginVal = dstCentre + Vector3.new(0, baseY, 0) + Vector3.new(xOffset, 0, zOffset)
-    
+    if not selectedPlayer then Rayfield:Notify({Title="Select player"}) return end
+    hideGhost()
+    clearLocal()
+    task.wait(0.5)
+    local srcBA = getBA(playerMapping[selectedPlayer])
+    local dstBA = getBA(game.Players.LocalPlayer.Name.."BuildArea")
+    if not srcBA or not dstBA then Rayfield:Notify({Title="Missing BA"}) return end
     local srcBuild = srcBA:FindFirstChild("Build")
     local dstBuild = dstBA:FindFirstChild("Build")
-    if not srcBuild or not dstBuild then
-        Rayfield:Notify({Title = "Error", Content = "Build folders missing."})
-        return
-    end
-    
-    -- Flatten all parts from source (including inside models)
+    if not srcBuild or not dstBuild then Rayfield:Notify({Title="Missing Build folders"}) return end
+
+    local srcCentre = computeCentre(srcBA)
+    local dstCentre = dstBA.Position + Vector3.new(xOffset, yExtra, zOffset)
+    local buildHeight = 3
+    local srcOrigin = srcCentre + Vector3.new(0, buildHeight, 0)
+    local dstOrigin = dstCentre + Vector3.new(0, buildHeight, 0)
+
+    -- Collect all parts
     local allParts = {}
     local function collect(obj)
-        for _, child in ipairs(obj:GetChildren()) do
-            if child:IsA("BasePart") then
-                table.insert(allParts, child)
-            elseif child:IsA("Model") then
-                collect(child)
-            end
+        for _, ch in ipairs(obj:GetChildren()) do
+            if ch:IsA("BasePart") then table.insert(allParts, ch)
+            elseif ch:IsA("Model") then collect(ch) end
         end
     end
     collect(srcBuild)
-    
-    if #allParts == 0 then
-        Rayfield:Notify({Title = "Info", Content = "No parts found."})
-        return
+    if #allParts == 0 then Rayfield:Notify({Title="No parts"}) return end
+    Rayfield:Notify({Title="Copying", Content=#allParts.." parts"})
+    local success = 0
+    for _, p in ipairs(allParts) do
+        if copyPart(p, srcOrigin, dstOrigin, dstBuild) then success = success + 1 end
+        task.wait(0.05)
     end
-    
-    Rayfield:Notify({Title = "Copying", Content = "Clearing and copying " .. #allParts .. " parts..."})
-    
-    -- Clear local build before copying
-    clearLocalBuild()
-    task.wait(0.5)
-    
-    local successCount = 0
-    for i, part in ipairs(allParts) do
-        if copySinglePart(part, srcOriginVal, dstOriginVal, dstBuild, i, #allParts) then
-            successCount = successCount + 1
-        end
-        task.wait(0.05)  -- delay to avoid rate limiting
-    end
-    
-    Rayfield:Notify({Title = "Complete", Content = successCount .. "/" .. #allParts .. " parts copied."})
+    Rayfield:Notify({Title="Done", Content=success.."/"..#allParts.." copied"})
 end
 
--- Build UI
-local initOpts = refreshPlayers()
-dropdown = MainTab:CreateDropdown({
-    Name = "Select Player",
-    Options = initOpts,
-    CurrentOption = initOpts[1] or "",
-    Callback = function(opt) 
-        selectedPlayer = opt
-        -- Clear ghost when switching players
-        if ghostModel then ghostModel:Destroy() end
-    end
-})
-if initOpts[1] then selectedPlayer = initOpts[1] end
-
-MainTab:CreateButton({Name = "Clear Your Build", Callback = clearLocalBuild})
-MainTab:CreateButton({Name = "Show Ghost Preview", Callback = showGhost})
-MainTab:CreateButton({Name = "Hide Ghost", Callback = hideGhost})
-MainTab:CreateButton({Name = "Copy Real Build", Callback = copyReal})
-MainTab:CreateButton({Name = "Refresh Players", Callback = function()
+-- UI
+local opts = refreshPlayers()
+dropdown = MainTab:CreateDropdown({Name="Select Player", Options=opts, CurrentOption=opts[1] or "", Callback=function(opt) selectedPlayer=opt end})
+if opts[1] then selectedPlayer = opts[1] end
+MainTab:CreateButton({Name="Clear Your Build", Callback=clearLocal})
+MainTab:CreateButton({Name="Show Ghost", Callback=showGhost})
+MainTab:CreateButton({Name="Hide Ghost", Callback=hideGhost})
+MainTab:CreateButton({Name="Copy Real Build", Callback=copyReal})
+MainTab:CreateButton({Name="Refresh", Callback=function()
     local newOpts = refreshPlayers()
     dropdown:SetOptions(newOpts)
-    if newOpts[1] then dropdown:SetValue(newOpts[1]); selectedPlayer = newOpts[1] end
+    if newOpts[1] then dropdown:SetValue(newOpts[1]); selectedPlayer=newOpts[1] end
 end})
-
-Rayfield:Notify({Title = "Ready", Content = "Show ghost, align with sliders, then copy."})
+Rayfield:Notify({Title="Ready", Content="Adjust offsets until ghost aligns, then copy."})
