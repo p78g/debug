@@ -1,48 +1,20 @@
--- Load Rayfield
+-- Load Rayfield (official)
 local Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"))()
 
 -- Services
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- Settings
+-- Settings (linked to Rayfield)
 local Settings = {
     Enabled = true,
     FOV = 150,
     TargetPart = "Head",
 }
 
--- ========== FOV Circle (Native, No Extra Menu) ==========
-local fovGui = Instance.new("ScreenGui")
-fovGui.Name = "SilentAimFOV"
-fovGui.ResetOnSpawn = false
-fovGui.Parent = game:GetService("CoreGui")
-
-local circle = Instance.new("Frame")
-circle.BackgroundTransparency = 1
-circle.BorderSizePixel = 0
-circle.AnchorPoint = Vector2.new(0.5, 0.5)
-circle.Size = UDim2.fromOffset(Settings.FOV * 2, Settings.FOV * 2)
-circle.Parent = fovGui
-
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(1, 0)
-corner.Parent = circle
-
-local stroke = Instance.new("UIStroke")
-stroke.Thickness = 2
-stroke.Transparency = 0.4
-stroke.Color = Color3.fromRGB(255, 255, 255)
-stroke.Parent = circle
-
-local function updateFOVCircle()
-    circle.Size = UDim2.fromOffset(Settings.FOV * 2, Settings.FOV * 2)
-end
-
--- ========== Silent Aim Logic ==========
+-- ========== Silent aim core (exactly from the raw script) ==========
 local function getClosestTarget()
     if not Settings.Enabled then return nil end
     local mousePos = UserInputService:GetMouseLocation()
@@ -68,13 +40,13 @@ local function getClosestTarget()
     return bestTarget
 end
 
--- Hook into projectile system (same as raw script)
+-- Hook into projectile system (from the raw script)
 local function hookProjectiles()
     local success, Projectile = pcall(require, 
         game:GetService("ReplicatedStorage").Modules.GunFramework.Modules.Projectile
     )
     if not success then
-        warn("[Rayfield] Projectile module not found. Aimbot will not work.")
+        warn("[Rayfield] Projectile module not found. Silent aim will not work.")
         return
     end
     
@@ -92,23 +64,10 @@ local function hookProjectiles()
 end
 hookProjectiles()
 
--- Update FOV circle position and color each frame
-RunService.RenderStepped:Connect(function()
-    local mousePos = UserInputService:GetMouseLocation()
-    circle.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
-    
-    local targetInside = getClosestTarget() ~= nil
-    if targetInside and Settings.Enabled then
-        stroke.Color = Color3.fromRGB(255, 50, 50)  -- Red = target inside
-    else
-        stroke.Color = Color3.fromRGB(255, 255, 255) -- White = no target
-    end
-end)
-
--- ========== Rayfield Menu ==========
+-- ========== Rayfield GUI ==========
 local Window = Rayfield:CreateWindow({
-    Name = "Silent Aim",
-    LoadingTitle = "Aimbot",
+    Name = "Silent Aim Control",
+    LoadingTitle = "Street Life Aimbot",
     Theme = "Default",
 })
 
@@ -123,14 +82,13 @@ MainTab:CreateToggle({
 })
 
 MainTab:CreateSlider({
-    Name = "FOV Radius",
+    Name = "FOV Radius (px)",
     Range = {50, 400},
     Increment = 1,
     Suffix = "px",
     CurrentValue = Settings.FOV,
     Callback = function(v)
         Settings.FOV = v
-        updateFOVCircle()
     end,
 })
 
@@ -143,4 +101,4 @@ MainTab:CreateDropdown({
     end,
 })
 
-print("Rayfield menu + FOV circle loaded. FOV circle follows mouse, red = target inside.")
+print("Rayfield menu loaded. Silent aim active - no visual FOV circle (exactly like original script).")
