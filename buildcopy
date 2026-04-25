@@ -28,7 +28,7 @@ MainTab:CreateButton({
     Callback = function()
         xOffset = -28.637
         zOffset = -17.512
-        yExtra = 0
+        yExtra = 5
         Rayfield:Notify({ Title = "Offsets Reset", Content = "X: -28.637, Z: -17.512, Y: 0" })
     end
 })
