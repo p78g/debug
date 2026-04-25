@@ -1,10 +1,9 @@
--- Town Build Copier - Strictly Corrected Offsets
--- Y = +5 only | Z = -17.512 (no -17 on Y)
+-- Town Build Copier - Minimal Clean Fix (Height + Rotation + Resize)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Build Copier - Fixed Y/Z Offsets",
+    Name = "Town Copier - Height + Rotation Fix",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -27,10 +26,10 @@ end
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
 local localBuildFolder = localBuildArea:WaitForChild("Build")
 
-local BASE_HEIGHT = 5                    -- Fixed +5 studs on Y
-local X_OFFSET = -28.637                 -- Left/Right offset
-local Z_OFFSET = -17.512                 -- Front/Back offset (this is the -17 you want)
-local EXTRA_Y_OFFSET = 0                 -- Additional Y (keep at 0 unless you want more)
+local BASE_Y = 5          -- Fixed +5 studs on Y
+local X_OFFSET = -28.637
+local Z_OFFSET = -17.512
+local EXTRA_Y = 0
 
 local selectedPlayer = nil
 
@@ -46,7 +45,7 @@ local function refreshPlayers()
 end
 refreshPlayers()
 
-Tab:CreateSection("Player Selection")
+Tab:CreateSection("Player")
 local Dropdown = Tab:CreateDropdown({
     Name = "Select Player to Copy From",
     Options = playerOptions,
@@ -59,24 +58,21 @@ local Dropdown = Tab:CreateDropdown({
 
 Tab:CreateSection("Offsets")
 Tab:CreateSlider({ Name = "X Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = X_OFFSET, Callback = function(v) X_OFFSET = v end })
-Tab:CreateSlider({ Name = "Extra Y Offset", Range = {-50, 100}, Increment = 0.01, CurrentValue = EXTRA_Y_OFFSET, Callback = function(v) EXTRA_Y_OFFSET = v end })
-Tab:CreateSlider({ Name = "Z Offset (-17)", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
+Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, CurrentValue = EXTRA_Y, Callback = function(v) EXTRA_Y = v end })
+Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Y = +5 | Z = -17)",
-    Description = "Strictly: Y only gets +5, Z gets the -17 offset",
+    Name = "🔄 Copy Build - Clean Fix",
+    Description = "Fixed Height + Rotation + Resize Attempt",
     Callback = function()
         if not selectedPlayer then
-            Rayfield:Notify({Title = "Error", Content = "No player selected!"}) 
+            Rayfield:Notify({Title = "Error", Content = "Select player first!"}) 
             return 
         end
 
         local remote = getRemote()
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
-        if not sourceArea then 
-            Rayfield:Notify({Title = "Error", Content = "Source not found"}) 
-            return 
-        end
+        if not sourceArea then return Rayfield:Notify({Title = "Error", Content = "Source not found"}) end
 
         local sourceBuild = sourceArea:WaitForChild("Build")
 
@@ -93,7 +89,7 @@ Tab:CreateButton({
             return 
         end
 
-        -- Calculate source center
+        -- Source center
         local sumX, sumY, sumZ = 0, 0, 0
         for _, p in ipairs(allParts) do
             local pos = p.Position
@@ -101,16 +97,19 @@ Tab:CreateButton({
         end
         local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
 
-        -- CORRECT DESTINATION ORIGIN
-        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_HEIGHT + EXTRA_Y_OFFSET, Z_OFFSET)
+        -- FIXED Y HEIGHT
+        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Y = +5 | Z = -17.512", Duration = 6})
+        Rayfield:Notify({Title = "Starting Copy", Content = "Y = +5 | Trying rotation + resize", Duration = 6})
 
         local createdParts = {}
 
         for _, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
+
+            -- Proper rotation using full source CFrame rotation
+            local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
 
             local partType = "Normal"
             local class = sourcePart.ClassName
@@ -124,21 +123,26 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
+            -- Create Part
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
-
+                -- Rotation
                 remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
-                task.wait(0.4)
-
-                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
-                task.wait(0.4)
-
-                remote:InvokeServer("SyncResize", {{Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size}}, {"ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal"})
                 task.wait(0.5)
+
+                -- Move (force position)
+                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                task.wait(0.5)
+
+                -- Resize - More direct attempt
+                remote:InvokeServer("SyncResize", 
+                    {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
+                    { "ResizeFace", Enum.NormalId.Right, sourcePart.Size.X - newPart.Size.X, Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), "X", Vector3.xAxis, "Normal" }
+                )
+                task.wait(0.6)
             end
         end
 
@@ -146,13 +150,13 @@ Tab:CreateButton({
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 8})
+        Rayfield:Notify({Title = "Done", Content = #createdParts .. " parts created", Duration = 8})
     end,
 })
 
-Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
+Tab:CreateButton({ Name = "Refresh List", Callback = function()
     refreshPlayers()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Offsets Fixed", Content = "Y only gets +5 studs | Z gets the -17 offset", Duration = 8})
+Rayfield:Notify({Title = "Clean Fix Loaded", Content = "Y forced to +5 | Better rotation + resize", Duration = 8})
