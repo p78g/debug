@@ -1,10 +1,10 @@
--- Town Build Copier - Center + Side Measurement Method
+-- Town Build Copier - Slow & Stable (Fixed Queue Exhausted Error)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Center + Sides",
-    LoadingTitle = "Loading...",
+    Name = "Town Plot Copier - Slow Stable",
+    LoadingTitle = "Loading Slow Version...",
     Theme = "Default"
 })
 
@@ -26,7 +26,7 @@ end
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
 local localBuildFolder = localBuildArea:WaitForChild("Build")
 
-local BASE_Y = 4
+local BASE_Y = 5
 local X_OFFSET = -28.637
 local Z_OFFSET = -17.512
 local EXTRA_Y = 0
@@ -62,8 +62,8 @@ Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, Current
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Center + Side Measurement)",
-    Description = "Measures from center and sides of BuildArea",
+    Name = "🔄 Copy Build (Slow & Stable)",
+    Description = "Long delays to prevent queue exhausted error",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -78,12 +78,6 @@ Tab:CreateButton({
         end
 
         local sourceBuild = sourceArea:WaitForChild("Build")
-        local sourceBase = sourceArea:FindFirstChildWhichIsA("BasePart") -- plot base
-
-        if not sourceBase then
-            Rayfield:Notify({Title = "Error", Content = "Could not find source base part"}) 
-            return 
-        end
 
         local allParts = {}
         local function collect(obj)
@@ -98,25 +92,22 @@ Tab:CreateButton({
             return 
         end
 
-        -- Center + Side measurement
-        local sourceCenter = sourceBase.Position
-        local sourceSize = sourceBase.Size
+        local sumX, sumY, sumZ = 0, 0, 0
+        for _, p in ipairs(allParts) do
+            local pos = p.Position
+            sumX += pos.X; sumY += pos.Y; sumZ += pos.Z
+        end
+        local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
 
-        local destCenter = localBuildArea.Position
-        local destSize = localBuildArea.Size
+        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
 
-        -- Calculate offset from source center to your plot center + user offsets
-        local centerOffset = destCenter - sourceCenter + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
-
-        Rayfield:Notify({Title = "Copying...", Content = "Using center + side measurement", Duration = 6})
+        Rayfield:Notify({Title = "Starting Slow Copy", Content = "Processing " .. #allParts .. " parts with long delays...", Duration = 8})
 
         local createdParts = {}
 
-        for _, sourcePart in ipairs(allParts) do
-            -- Relative position from source center
-            local relativePos = sourcePart.Position - sourceCenter
-            local targetPos = destCenter + relativePos + centerOffset
-
+        for i, sourcePart in ipairs(allParts) do
+            local offset = sourcePart.Position - sourceCenter
+            local targetPos = destOrigin + offset
             local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
 
             local partType = "Normal"
@@ -131,33 +122,33 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
+            print("Creating part", i, "of", #allParts, "| Type:", partType)
+
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- Resize First (working logic)
-                remote:InvokeServer("SyncResize",
-                    {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
-                    { "ResizeFace", Enum.NormalId.Right, sourcePart.Size.X - newPart.Size.X, Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), "X", Vector3.xAxis, "Normal" }
-                )
-                task.wait(0.5)
+                remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }}, { "ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal" })
+                task.wait(0.8)
 
-                -- Rotate
                 remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
-                task.wait(0.5)
+                task.wait(0.8)
 
-                -- Move
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
-                task.wait(0.5)
+                task.wait(1.0)
+            else
+                warn("Failed to create part", i)
             end
+
+            task.wait(0.7) -- Extra delay between parts to prevent queue exhaustion
         end
 
         if #createdParts > 0 then
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 8})
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " / " .. #allParts .. " parts created", Duration = 10})
     end,
 })
 
@@ -166,4 +157,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Center + Side Method", Content = "Using center and sides of BuildArea for positioning", Duration = 8})
+Rayfield:Notify({Title = "Slow Stable Version", Content = "Long delays added to prevent 'queue exhausted' error", Duration = 8})
