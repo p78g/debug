@@ -1,468 +1,172 @@
--- Brainrot ESP - Scans ONLY workspace.Plots 1-6
--- Original targets + mutation scanning on Builds → ROOT → PetNameTag.Type.Text
+-- Town Build Copier - Fixed Height + Direct Size + Rotation Attempt
 
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "Town Copier - Height + Size Fix",
+    LoadingTitle = "Loading...",
+    Theme = "Default"
+})
+
+local Tab = Window:CreateTab("Copier", "hammer")
+
+local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
 
--- Original brainrot list (unchanged)
-local targets = {
-    "La grande Combanision",
-    "KarKirKirKurKur",
-    "Octamasu Noddledudu",
-    "Rhino Toasterino",
-    "Bulbito Bandito Trakorito",
-    "Alessio",
-    "Chillin Chili",
-    "Strawberry Elephant",
-    "Torrtuginni Dragonfrutinni",
-    -- New brainrots added here
-    "67",
-    "Agarrini la Palini",
-    "Ketupat Kepot",
-    "Tictac Sahur",
-    "Garama & Madungdung",
-    "Pakrahmatmamat",
-    "Pot Hotspot",
-    "Esok Sekolah",
-    "Chicleteira Bicicleteira",
-    "Dragon Cannelloni",
-    "Skibidi Toilet"
-}
+local BUILDING_AREAS = Workspace:WaitForChild("Private Building Areas")
 
--- Mutation → color mapping
-local mutationColors = {
-    ["admin"]     = Color3.fromRGB(255,  50,  50),   -- red
-    ["gold"]      = Color3.fromRGB(255, 215,   0),   -- yellow/gold
-    ["water"]     = Color3.fromRGB( 60, 160, 255),   -- blue
-    ["inferno"]   = Color3.fromRGB(180,  80,  30),   -- brown/orange-brown
-    ["thunder"]   = Color3.fromRGB(255, 165,   0),   -- orange
-    ["frostbite"] = Color3.fromRGB(100, 220, 255),   -- light blue / cyan
-}
-
-local highlighted = {}
-local allHighlights = {}
-
-local function matchesTarget(name)
-    local lowerName = name:lower()
-    for _, target in ipairs(targets) do
-        if lowerName:find(target:lower(), 1, true) then
-            return true
-        end
-    end
-    return false
+local function getRemote()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local tool = char:WaitForChild("Building Tools", 5)
+    if not tool then error("Equip Building Tools!") end
+    return tool:WaitForChild("SyncAPI"):WaitForChild("ServerEndpoint")
 end
 
-local function getMutation(text)
-    if not text or text == "" then return nil end
-    local lower = text:lower()
-    for mut, _ in pairs(mutationColors) do
-        if lower:find(mut, 1, true) then
-            return mut, mutationColors[mut]
+local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
+local localBuildFolder = localBuildArea:WaitForChild("Build")
+
+local BASE_Y = 4          -- Decreased by 1 as requested
+local X_OFFSET = -28.637
+local Z_OFFSET = -17.512
+local EXTRA_Y = 0
+
+local selectedPlayer = nil
+
+local playerOptions = {}
+
+local function refreshPlayers()
+    playerOptions = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and BUILDING_AREAS:FindFirstChild(plr.Name .. "BuildArea") then
+            table.insert(playerOptions, plr.Name)
         end
     end
-    return nil, nil
 end
+refreshPlayers()
 
-local function highlightModel(model)
-    if highlighted[model] then return end
-    highlighted[model] = true
+Tab:CreateSection("Player")
+local Dropdown = Tab:CreateDropdown({
+    Name = "Select Player to Copy From",
+    Options = playerOptions,
+    CurrentOption = {},
+    MultipleOptions = false,
+    Callback = function(Option)
+        selectedPlayer = (typeof(Option) == "table" and #Option > 0) and Players:FindFirstChild(Option[1]) or nil
+    end,
+})
 
-    -- Create Highlight (kept white/pulsing as original)
-    local hl = Instance.new("Highlight")
-    hl.FillColor = Color3.new(1, 1, 1)
-    hl.OutlineColor = Color3.new(1, 1, 1)
-    hl.FillTransparency = 0.4
-    hl.OutlineTransparency = 0
-    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    hl.Parent = model
-    table.insert(allHighlights, hl)
+Tab:CreateSection("Offsets")
+Tab:CreateSlider({ Name = "X Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = X_OFFSET, Callback = function(v) X_OFFSET = v end })
+Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, CurrentValue = EXTRA_Y, Callback = function(v) EXTRA_Y = v end })
+Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
-    -- Find root part
-    local root = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
-    if not root then return end
+Tab:CreateButton({
+    Name = "🔄 Copy Build (Height=4 + Direct Size)",
+    Description = "Height fixed | Direct Size for resize | Rotation attempt",
+    Callback = function()
+        if not selectedPlayer then
+            Rayfield:Notify({Title = "Error", Content = "Select player!"}) 
+            return 
+        end
 
-    -- BillboardGui
-    local bb = Instance.new("BillboardGui")
-    bb.Adornee = root
-    bb.Size = UDim2.new(0, 300, 0, 70)  -- slightly taller for mutation text
-    bb.StudsOffset = Vector3.new(0, 4.5, 0)
-    bb.AlwaysOnTop = true
-    bb.Parent = root
-    table.insert(allHighlights, bb)
+        local remote = getRemote()
+        local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
+        if not sourceArea then return Rayfield:Notify({Title = "Error", Content = "Source not found"}) end
 
-    local txt = Instance.new("TextLabel")
-    txt.Size = UDim2.new(1, 0, 1, 0)
-    txt.BackgroundTransparency = 1
-    txt.TextScaled = true
-    txt.Font = Enum.Font.GothamBold
-    txt.TextStrokeTransparency = 0
-    txt.TextStrokeColor3 = Color3.new(0, 0, 0)
+        local sourceBuild = sourceArea:WaitForChild("Build")
 
-    -- Default: just model name
-    local displayText = model.Name
-    local textColor = Color3.new(1, 1, 1)  -- white
-
-    -- Try to find mutation
-    local petTag = model:FindFirstChild("ROOT", true)
-    if petTag then
-        petTag = petTag:FindFirstChild("PetNameTag", true)
-        if petTag then
-            local typeObj = petTag:FindFirstChild("Type")
-            if typeObj and typeObj:IsA("TextLabel") then  -- or TextBox etc.
-                local mutText = typeObj.Text or ""
-                local mut, color = getMutation(mutText)
-                if mut then
-                    displayText = model.Name .. " [" .. mut:gsub("^%l", string.upper) .. "]"
-                    textColor = color
-                elseif mutText ~= "" then
-                    -- unknown non-empty mutation → show it but keep white
-                    displayText = model.Name .. " [" .. mutText .. "]"
-                end
-                -- if empty → just name (already set)
+        local allParts = {}
+        local function collect(obj)
+            for _, v in ipairs(obj:GetDescendants()) do
+                if v:IsA("BasePart") then table.insert(allParts, v) end
             end
         end
-    end
+        collect(sourceBuild)
 
-    txt.Text = displayText
-    txt.TextColor3 = textColor
-    txt.Parent = bb
-    table.insert(allHighlights, bb)
-
-    -- Pulsing highlight (original behavior)
-    task.spawn(function()
-        while hl.Parent do
-            hl.FillTransparency = 0.4
-            task.wait(0.8)
-            hl.FillTransparency = 0.75
-            task.wait(0.8)
-        end
-    end)
-
-    print("Highlighted:", model.Name, "→", model:GetFullName())
-    if displayText ~= model.Name then
-        print("   → Mutation text:", displayText)
-    end
-end
-
-local function scan()
-    local plotsFolder = Workspace:FindFirstChild("Plots")
-    if not plotsFolder then
-        print("→ No 'Plots' folder found in workspace")
-        return
-    end
-
-    local count = 0
-    print("Scanning workspace.Plots 1–6 for brainrots + mutations...")
-
-    for i = 1, 6 do
-        local plot = plotsFolder:FindFirstChild(tostring(i))
-        if not plot then
-            print(" Plot " .. i .. ": not found")
-            continue
+        if #allParts == 0 then
+            Rayfield:Notify({Title = "Error", Content = "No parts found"}) 
+            return 
         end
 
-        print(" Checking Plot " .. i .. "...")
+        local sumX, sumY, sumZ = 0, 0, 0
+        for _, p in ipairs(allParts) do
+            local pos = p.Position
+            sumX += pos.X; sumY += pos.Y; sumZ += pos.Z
+        end
+        local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
 
-        local builds = plot:FindFirstChild("Builds")
-        if builds then
-            for _, build in ipairs(builds:GetChildren()) do
-                -- build can be named anything ("X")
-                if build:IsA("Model") and matchesTarget(build.Name) then
-                    highlightModel(build)
-                    count = count + 1
-                end
+        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
+
+        Rayfield:Notify({Title = "Copying...", Content = "Height = 4 | Direct size + rotation", Duration = 6})
+
+        local createdParts = {}
+
+        for _, sourcePart in ipairs(allParts) do
+            local offset = sourcePart.Position - sourceCenter
+            local targetPos = destOrigin + offset
+
+            local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
+
+            local partType = "Normal"
+            local class = sourcePart.ClassName
+            if class == "TrussPart" then partType = "Truss"
+            elseif class == "WedgePart" then partType = "Wedge"
+            elseif class == "CornerWedgePart" then partType = "Corner"
+            elseif class == "Cylinder" or sourcePart.Shape == Enum.PartType.Cylinder then partType = "Cylinder"
+            elseif sourcePart.Shape == Enum.PartType.Ball then partType = "Ball"
+            elseif class == "Seat" then partType = "Seat"
+            elseif class == "VehicleSeat" then partType = "Vehicle Seat"
+            elseif class == "SpawnLocation" then partType = "Spawn"
+            end
+
+            -- Create Part
+            local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
+
+            if newPart and newPart:IsA("BasePart") then
+                table.insert(createdParts, newPart)
+
+                -- Exact SyncRotate style from your log
+                local rotateArgs = {
+                    "SyncRotate",
+                    {{ Part = newPart, CFrame = targetCFrame }},
+                    {
+                        "AroundPivot",
+                        CFrame.new(0, 0, 0, targetCFrame.XVector.X, targetCFrame.XVector.Y, targetCFrame.XVector.Z,
+                                   targetCFrame.YVector.X, targetCFrame.YVector.Y, targetCFrame.YVector.Z,
+                                   targetCFrame.ZVector.X, targetCFrame.ZVector.Y, targetCFrame.ZVector.Z),
+                        "Center",
+                        CFrame.new(targetPos.X, targetPos.Y, targetPos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                        "Center"
+                    }
+                }
+                remote:InvokeServer(unpack(rotateArgs))
+                task.wait(0.5)
+
+                -- SyncMove
+                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                task.wait(0.5)
+
+                -- Resize using exact source Size
+                remote:InvokeServer("SyncResize", 
+                    {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
+                    { "ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal" }
+                )
+                task.wait(0.6)
             end
         end
 
-        -- Also keep original deep descendant scan in case some are outside Builds
-        for _, obj in ipairs(plot:GetDescendants()) do
-            if obj:IsA("Model") and matchesTarget(obj.Name) then
-                highlightModel(obj)
-                count = count + 1
-            end
-        end
-    end
-
-    print("Scan complete. Found & highlighted " .. count .. " brainrot(s)")
-    if count == 0 then
-        print("→ No matches found.")
-    end
-end
-
-print("Brainrot + Mutation ESP started - scanning Plots 1-6")
-scan()
-
--- Re-scan every ~1.5 seconds (original timing)
-local connection = RunService.Heartbeat:Connect(function()
-    if tick() % 1.5 < 0.1 then
-        scan()
-    end
-end)
-
-game.Players.LocalPlayer.CharacterRemoving:Connect(function()
-    connection:Disconnect()
-    for _, item in ipairs(allHighlights) do
-        pcall(function() item:Destroy() end)
-    end
-    print("ESP cleaned up")
-end)
-
-print("Active. Watching for these brainrots (partial match):")
-for _, name in ipairs(targets) do
-    print(" • " .. name)
-end-- Combined: Plot Mass Cleaner + Huge Base Part + Brainrot + Mutation ESP
--- Executor-friendly - runs cleanup once → builds floor → starts persistent ESP
-
-local Workspace    = game:GetService("Workspace")
-local RunService   = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Players      = game:GetService("Players")
-local LocalPlayer  = Players.LocalPlayer
-
--- ────────────────────────────────────────────────
--- PART 1: CLEANUP - delete plot-related junk
--- ────────────────────────────────────────────────
-local namesToDelete = {
-    "PlotBase", "PlotBaseTop", "_DefenseZone", "Plot", "Bottom",
-    "Shield", "BaseGrass", "TP_BARRIERS"
-}
-
-local deleted = 0
-
-local function safeDestroy(obj)
-    if obj and not obj:IsDescendantOf(Players) then
-        pcall(function()
-            obj:Destroy()
-            deleted = deleted + 1
-        end)
-    end
-end
-
--- Deep scan
-for _, obj in ipairs(Workspace:GetDescendants()) do
-    if table.find(namesToDelete, obj.Name) and
-       (obj:IsA("Model") or obj:IsA("Folder") or obj:IsA("BasePart") or
-        obj:IsA("UnionOperation")) then
-        safeDestroy(obj)
-    end
-end
-
--- Direct children too (edge cases)
-for _, obj in ipairs(Workspace:GetChildren()) do
-    if table.find(namesToDelete, obj.Name) then
-        safeDestroy(obj)
-    end
-end
-
-if deleted > 0 then
-    print("Cleaned " .. deleted .. " plot-related objects")
-else
-    print("No matching plot objects found to clean")
-end
-
--- ────────────────────────────────────────────────
--- PART 2: CREATE HUGE CUSTOM BASE PART
--- ────────────────────────────────────────────────
-local hugePart = Instance.new("Part")
-hugePart.Name = "HugeBaseFloor"
-hugePart.Size = Vector3.new(1068, 0.1249999925494194, 1032)
-hugePart.CFrame = CFrame.new(
-    -260, -30.3115025, -0.39616394,
-    1, 0, 0,
-    0, 1, 0,
-    0, 0, 1
-)
-hugePart.Anchored = true
-hugePart.CanCollide = true
-hugePart.Transparency = 0
-hugePart.Material = Enum.Material.Concrete
-hugePart.Color = Color3.fromRGB(65, 75, 60)
-hugePart.CastShadow = true
-hugePart.CustomPhysicalProperties = PhysicalProperties.new(9999999, 0.1, 0.5, 1000, 1)
-hugePart.Parent = Workspace
-
-print("Created huge base part: " .. hugePart.Name)
-print("Size: " .. tostring(hugePart.Size))
-print("Position: " .. tostring(hugePart.Position))
-
--- Optional: tiny delay so cleanup finishes before ESP starts scanning
-task.wait(0.4)
-
--- ────────────────────────────────────────────────
--- PART 3: BRAINROT + MUTATION ESP (persistent)
--- ────────────────────────────────────────────────
-local targets = {
-    "La grande Combanision", "KarKirKirKurKur", "Octamasu Noddledudu",
-    "Rhino Toasterino", "Bulbito Bandito Trakorito", "Alessio",
-    "Chillin Chili", "Strawberry Elephant", "Torrtuginni Dragonfrutinni",
-    "67", "Agarrini la Palini", "Ketupat Kepot", "Tictac Sahur",
-    "Garama & Madungdung", "Pakrahmatmamat", "Pot Hotspot",
-    "Esok Sekolah", "Chicleteira Bicicleteira", "Dragon Cannelloni",
-    "Skibidi Toilet"
-}
-
-local mutationColors = {
-    admin     = Color3.fromRGB(255,  50,  50),
-    gold      = Color3.fromRGB(255, 215,   0),
-    water     = Color3.fromRGB( 60, 160, 255),
-    inferno   = Color3.fromRGB(180,  80,  30),
-    thunder   = Color3.fromRGB(255, 165,   0),
-    frostbite = Color3.fromRGB(100, 220, 255),
-}
-
-local highlighted   = {}
-local allHighlights = {}
-
-local function matchesTarget(name)
-    local ln = name:lower()
-    for _, t in ipairs(targets) do
-        if ln:find(t:lower(), 1, true) then return true end
-    end
-    return false
-end
-
-local function getMutation(text)
-    if not text or text == "" then return nil end
-    local lower = text:lower()
-    for mut in pairs(mutationColors) do
-        if lower:find(mut, 1, true) then
-            return mut, mutationColors[mut]
-        end
-    end
-    return nil
-end
-
-local function highlightModel(model)
-    if highlighted[model] then return end
-    highlighted[model] = true
-
-    local hl = Instance.new("Highlight")
-    hl.FillColor       = Color3.new(1,1,1)
-    hl.OutlineColor    = Color3.new(1,1,1)
-    hl.FillTransparency = 0.4
-    hl.OutlineTransparency = 0
-    hl.DepthMode       = Enum.HighlightDepthMode.AlwaysOnTop
-    hl.Parent          = model
-    table.insert(allHighlights, hl)
-
-    local root = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
-    if not root then return end
-
-    local bb = Instance.new("BillboardGui")
-    bb.Adornee      = root
-    bb.Size         = UDim2.new(0, 300, 0, 70)
-    bb.StudsOffset  = Vector3.new(0, 4.5, 0)
-    bb.AlwaysOnTop  = true
-    bb.Parent       = root
-    table.insert(allHighlights, bb)
-
-    local txt = Instance.new("TextLabel")
-    txt.Size               = UDim2.new(1,0,1,0)
-    txt.BackgroundTransparency = 1
-    txt.TextScaled         = true
-    txt.Font               = Enum.Font.GothamBold
-    txt.TextStrokeTransparency = 0
-    txt.TextStrokeColor3   = Color3.new(0,0,0)
-    txt.Parent             = bb
-    table.insert(allHighlights, txt)
-
-    local displayText = model.Name
-    local textColor   = Color3.new(1,1,1)
-
-    local petTag = model:FindFirstChild("ROOT", true)
-    if petTag then
-        petTag = petTag:FindFirstChild("PetNameTag", true)
-        if petTag then
-            local typeObj = petTag:FindFirstChild("Type")
-            if typeObj and typeObj:IsA("TextLabel") then
-                local mutText = typeObj.Text or ""
-                local mut, color = getMutation(mutText)
-                if mut then
-                    displayText = model.Name .. " [" .. mut:gsub("^%l", string.upper) .. "]"
-                    textColor = color
-                elseif mutText ~= "" then
-                    displayText = model.Name .. " [" .. mutText .. "]"
-                end
-            end
-        end
-    end
-
-    txt.Text      = displayText
-    txt.TextColor3 = textColor
-
-    task.spawn(function()
-        while hl.Parent do
-            hl.FillTransparency = 0.4  task.wait(0.8)
-            hl.FillTransparency = 0.75 task.wait(0.8)
-        end
-    end)
-
-    print("Highlighted: " .. model.Name .. " → " .. model:GetFullName())
-    if displayText ~= model.Name then
-        print("  → " .. displayText)
-    end
-end
-
-local function scan()
-    local plots = Workspace:FindFirstChild("Plots")
-    if not plots then
-        print("→ No 'Plots' folder in Workspace")
-        return
-    end
-
-    local count = 0
-    for i = 1, 6 do
-        local plot = plots:FindFirstChild(tostring(i))
-        if not plot then continue end
-
-        local builds = plot:FindFirstChild("Builds")
-        if builds then
-            for _, build in ipairs(builds:GetChildren()) do
-                if build:IsA("Model") and matchesTarget(build.Name) then
-                    highlightModel(build)
-                    count += 1
-                end
-            end
+        if #createdParts > 0 then
+            remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        for _, obj in ipairs(plot:GetDescendants()) do
-            if obj:IsA("Model") and matchesTarget(obj.Name) then
-                highlightModel(obj)
-                count += 1
-            end
-        end
-    end
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 8})
+    end,
+})
 
-    print("ESP scan done → " .. count .. " brainrot(s) highlighted")
-end
+Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
+    refreshPlayers()
+    Dropdown:Refresh(playerOptions)
+end })
 
-print("Combined script loaded")
-print("Cleanup done → huge floor created → Brainrot ESP active")
-print("Watching for:")
-for _, n in ipairs(targets) do print(" • " .. n) end
-
-scan()  -- initial scan
-
-local conn
-conn = RunService.Heartbeat:Connect(function()
-    if tick() % 1.5 < 0.1 then
-        scan()
-    end
-end)
-
-LocalPlayer.CharacterRemoving:Connect(function()
-    if conn then conn:Disconnect() end
-    for _, v in ipairs(allHighlights) do
-        pcall(function() v:Destroy() end)
-    end
-    print("ESP cleaned up on character remove")
-end)
-
--- Optional: the remote fire (from original b&s)
-local args = {"buytool", 306690896, "Bloxy Cola"}
-pcall(function()
-    ReplicatedStorage:WaitForChild("RemoteEvent"):FireServer(unpack(args))
-    print("Fired Bloxy Cola remote")
-end)
-
-print("All done.")
+Rayfield:Notify({Title = "Updated Script", Content = "Height = 4 | Direct Size for resize | Exact rotation structure", Duration = 8})
