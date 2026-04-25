@@ -1,9 +1,9 @@
--- Town Build Copier - Fixed Height + Direct Size + Rotation Attempt
+-- Town Build Copier - Working Resize Logic + Height = 4
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Copier - Height + Size Fix",
+    Name = "Town Copier - Working Resize",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -62,17 +62,20 @@ Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, Current
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Height=4 + Direct Size)",
-    Description = "Height fixed | Direct Size for resize | Rotation attempt",
+    Name = "🔄 Copy Build (Height = 4)",
+    Description = "Working resize logic + height fixed",
     Callback = function()
         if not selectedPlayer then
-            Rayfield:Notify({Title = "Error", Content = "Select player!"}) 
-            return 
+            Rayfield:Notify({Title = "Error", Content = "Select player first!"})
+            return
         end
 
         local remote = getRemote()
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
-        if not sourceArea then return Rayfield:Notify({Title = "Error", Content = "Source not found"}) end
+        if not sourceArea then 
+            Rayfield:Notify({Title = "Error", Content = "Source not found"}) 
+            return 
+        end
 
         local sourceBuild = sourceArea:WaitForChild("Build")
 
@@ -85,10 +88,11 @@ Tab:CreateButton({
         collect(sourceBuild)
 
         if #allParts == 0 then
-            Rayfield:Notify({Title = "Error", Content = "No parts found"}) 
-            return 
+            Rayfield:Notify({Title = "Error", Content = "No parts found"})
+            return
         end
 
+        -- Source center
         local sumX, sumY, sumZ = 0, 0, 0
         for _, p in ipairs(allParts) do
             local pos = p.Position
@@ -96,16 +100,16 @@ Tab:CreateButton({
         end
         local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
 
+        -- FIXED Y HEIGHT
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Height = 4 | Direct size + rotation", Duration = 6})
+        Rayfield:Notify({Title = "Starting Copy", Content = "Height = 4 | Using working resize logic", Duration = 6})
 
         local createdParts = {}
 
         for _, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
-
             local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
 
             local partType = "Normal"
@@ -126,31 +130,18 @@ Tab:CreateButton({
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- Exact SyncRotate style from your log
-                local rotateArgs = {
-                    "SyncRotate",
-                    {{ Part = newPart, CFrame = targetCFrame }},
-                    {
-                        "AroundPivot",
-                        CFrame.new(0, 0, 0, targetCFrame.XVector.X, targetCFrame.XVector.Y, targetCFrame.XVector.Z,
-                                   targetCFrame.YVector.X, targetCFrame.YVector.Y, targetCFrame.YVector.Z,
-                                   targetCFrame.ZVector.X, targetCFrame.ZVector.Y, targetCFrame.ZVector.Z),
-                        "Center",
-                        CFrame.new(targetPos.X, targetPos.Y, targetPos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1),
-                        "Center"
-                    }
-                }
-                remote:InvokeServer(unpack(rotateArgs))
+                -- Rotation
+                remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
                 task.wait(0.5)
 
-                -- SyncMove
+                -- Move
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
                 task.wait(0.5)
 
-                -- Resize using exact source Size
-                remote:InvokeServer("SyncResize", 
+                -- Working Resize Logic (from the version you liked)
+                remote:InvokeServer("SyncResize",
                     {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
-                    { "ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal" }
+                    { "ResizeFace", Enum.NormalId.Right, sourcePart.Size.X - newPart.Size.X, Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), "X", Vector3.xAxis, "Normal" }
                 )
                 task.wait(0.6)
             end
@@ -164,9 +155,9 @@ Tab:CreateButton({
     end,
 })
 
-Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
+Tab:CreateButton({ Name = "Refresh List", Callback = function()
     refreshPlayers()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Updated Script", Content = "Height = 4 | Direct Size for resize | Exact rotation structure", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Height = 4 | Using previously working resize logic", Duration = 8})
