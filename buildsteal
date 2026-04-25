@@ -1,9 +1,9 @@
--- Town Build Copier - Save & Re-Create Using Exact Remotes
+-- Town Build Copier - Side/Corner Based Positioning + Exact Remotes
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Save + Rebuild",
+    Name = "Town Plot Copier - Corner Scan",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -19,7 +19,7 @@ local BUILDING_AREAS = Workspace:WaitForChild("Private Building Areas")
 local function getRemote()
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local tool = char:WaitForChild("Building Tools", 5)
-    if not tool then error("Equip Building Tools first!") end
+    if not tool then error("Equip Building Tools!") end
     return tool:WaitForChild("SyncAPI"):WaitForChild("ServerEndpoint")
 end
 
@@ -45,7 +45,7 @@ local function refreshPlayers()
 end
 refreshPlayers()
 
-Tab:CreateSection("Player Selection")
+Tab:CreateSection("Player")
 local Dropdown = Tab:CreateDropdown({
     Name = "Select Player to Copy From",
     Options = playerOptions,
@@ -62,56 +62,55 @@ Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, Current
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Save & Re-Create Build (Using Remotes)",
-    Description = "Capture with clone → Rebuild using exact remotes",
+    Name = "🔄 Copy Build (Corner Scan Method)",
+    Description = "Scans from sides/corners of BuildArea",
     Callback = function()
         if not selectedPlayer then
-            Rayfield:Notify({Title = "Error", Content = "Select a player first!"})
+            Rayfield:Notify({Title = "Error", Content = "Select player first!"})
             return
         end
 
         local remote = getRemote()
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
         if not sourceArea then 
-            Rayfield:Notify({Title = "Error", Content = "Source plot not found"}) 
+            Rayfield:Notify({Title = "Error", Content = "Source not found"}) 
             return 
         end
 
         local sourceBuild = sourceArea:WaitForChild("Build")
+        local sourceBase = sourceArea:FindFirstChildWhichIsA("BasePart") -- the plot base
 
-        -- Step 1: Capture all parts (including hierarchy)
-        local allParts = {}
-        local function collectParts(folder)
-            for _, obj in ipairs(folder:GetDescendants()) do
-                if obj:IsA("BasePart") then
-                    table.insert(allParts, obj)
-                end
-            end
-        end
-        collectParts(sourceBuild)
-
-        if #allParts == 0 then
-            Rayfield:Notify({Title = "Error", Content = "No parts found in source build"}) 
+        if not sourceBase then
+            Rayfield:Notify({Title = "Error", Content = "Could not find source base"}) 
             return 
         end
 
-        -- Calculate source center for relative positioning
-        local sumX, sumY, sumZ = 0, 0, 0
-        for _, p in ipairs(allParts) do
-            local pos = p.Position
-            sumX += pos.X; sumY += pos.Y; sumZ += pos.Z
+        local allParts = {}
+        local function collect(obj)
+            for _, v in ipairs(obj:GetDescendants()) do
+                if v:IsA("BasePart") then table.insert(allParts, v) end
+            end
         end
-        local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
+        collect(sourceBuild)
 
-        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
+        if #allParts == 0 then
+            Rayfield:Notify({Title = "Error", Content = "No parts found"}) 
+            return 
+        end
 
-        Rayfield:Notify({Title = "Rebuilding...", Content = "Re-creating " .. #allParts .. " parts using remotes...", Duration = 6})
+        -- New corner-based positioning
+        local sourceCorner = sourceBase.Position - Vector3.new(sourceBase.Size.X/2, 0, sourceBase.Size.Z/2)
+        local destCorner = localBuildArea.Position - Vector3.new(localBuildArea.Size.X/2, 0, localBuildArea.Size.Z/2) 
+                           + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
+
+        Rayfield:Notify({Title = "Copying...", Content = "Using corner scan method...", Duration = 6})
 
         local createdParts = {}
 
         for _, sourcePart in ipairs(allParts) do
-            local offset = sourcePart.Position - sourceCenter
-            local targetPos = destOrigin + offset
+            local relativeOffset = sourcePart.Position - sourceCorner
+            local targetPos = destCorner + relativeOffset
+
             local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
 
             local partType = "Normal"
@@ -126,35 +125,34 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            -- CreatePart using exact format you provided
+            -- CreatePart
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- SyncRotate (exact style)
+                -- Resize First (working logic)
+                remote:InvokeServer("SyncResize",
+                    {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
+                    { "ResizeFace", Enum.NormalId.Right, sourcePart.Size.X - newPart.Size.X, Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), "X", Vector3.xAxis, "Normal" }
+                )
+                task.wait(0.5)
+
+                -- Rotate
                 remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
                 task.wait(0.5)
 
-                -- SyncMove
+                -- Move
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
                 task.wait(0.5)
-
-                -- SyncResize (direct size)
-                remote:InvokeServer("SyncResize", 
-                    {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
-                    { "ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal" }
-                )
-                task.wait(0.6)
             end
         end
 
-        -- CreateGroup if possible
         if #createdParts > 0 then
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        Rayfield:Notify({Title = "Rebuild Complete", Content = #createdParts .. " parts re-created using remotes", Duration = 10})
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 8})
     end,
 })
 
@@ -163,4 +161,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Save + Rebuild Mode", Content = "Captures build then rebuilds with exact remotes", Duration = 8})
+Rayfield:Notify({Title = "Corner Scan Method", Content = "Using side/corner based positioning", Duration = 8})
