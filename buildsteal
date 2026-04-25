@@ -1,10 +1,10 @@
--- Town Build Copier - Final Version
+-- Town Plot Copier - SaveInstance Method (Experimental)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier",   -- Changed name
-    LoadingTitle = "Loading Copier...",
+    Name = "Town Plot Copier - SaveInstance",
+    LoadingTitle = "Loading...",
     Theme = "Default"
 })
 
@@ -15,21 +15,6 @@ local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
 local BUILDING_AREAS = Workspace:WaitForChild("Private Building Areas")
-
-local function getRemote()
-    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    local tool = char:WaitForChild("Building Tools", 5)
-    if not tool then error("Equip Building Tools!") end
-    return tool:WaitForChild("SyncAPI"):WaitForChild("ServerEndpoint")
-end
-
-local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
-local localBuildFolder = localBuildArea:WaitForChild("Build")
-
-local BASE_Y = 4
-local X_OFFSET = -28.637
-local Z_OFFSET = -17.512
-local EXTRA_Y = 0
 
 local selectedPlayer = nil
 
@@ -45,7 +30,7 @@ local function refreshPlayers()
 end
 refreshPlayers()
 
-Tab:CreateSection("Player")
+Tab:CreateSection("SaveInstance Method")
 local Dropdown = Tab:CreateDropdown({
     Name = "Select Player to Copy From",
     Options = playerOptions,
@@ -56,99 +41,62 @@ local Dropdown = Tab:CreateDropdown({
     end,
 })
 
-Tab:CreateSection("Offsets")
-Tab:CreateSlider({ Name = "X Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = X_OFFSET, Callback = function(v) X_OFFSET = v end })
-Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, CurrentValue = EXTRA_Y, Callback = function(v) EXTRA_Y = v end })
-Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
-
 Tab:CreateButton({
-    Name = "🔄 Copy Build",
-    Description = "Resize → Rotate → Move | Height = 4",
+    Name = "📥 Save & Load Build (SaveInstance)",
+    Description = "Experimental: Save source Build folder and load into your plot",
     Callback = function()
         if not selectedPlayer then
-            Rayfield:Notify({Title = "Error", Content = "Select player first!"})
+            Rayfield:Notify({Title = "Error", Content = "Select a player first!"})
             return
         end
 
-        local remote = getRemote()
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
-        if not sourceArea then 
-            Rayfield:Notify({Title = "Error", Content = "Source not found"}) 
-            return 
+        if not sourceArea then
+            Rayfield:Notify({Title = "Error", Content = "Source plot not found"})
+            return
         end
 
         local sourceBuild = sourceArea:WaitForChild("Build")
 
-        local allParts = {}
-        local function collect(obj)
-            for _, v in ipairs(obj:GetDescendants()) do
-                if v:IsA("BasePart") then table.insert(allParts, v) end
+        Rayfield:Notify({Title = "Saving...", Content = "Saving source build...", Duration = 5})
+
+        -- Save the source Build folder
+        local savedBuild = sourceBuild:Clone()
+        savedBuild.Name = "SavedBuild_" .. selectedPlayer.Name
+
+        -- Clear any existing saved build
+        if Workspace:FindFirstChild("SavedBuild_" .. selectedPlayer.Name) then
+            Workspace:FindFirstChild("SavedBuild_" .. selectedPlayer.Name):Destroy()
+        end
+
+        savedBuild.Parent = Workspace
+
+        Rayfield:Notify({Title = "Saved", Content = "Source build saved. Now loading into your plot...", Duration = 5})
+
+        -- Load into your plot
+        local myArea = BUILDING_AREAS:FindFirstChild(LocalPlayer.Name .. "BuildArea")
+        local myBuild = myArea:WaitForChild("Build")
+
+        -- Clear your current build first (optional - comment out if you don't want to clear)
+        for _, v in ipairs(myBuild:GetChildren()) do
+            v:Destroy()
+        end
+
+        -- Clone and parent to your build folder
+        local cloned = savedBuild:Clone()
+        for _, part in ipairs(cloned:GetChildren()) do
+            part.Parent = myBuild
+        end
+        cloned:Destroy()
+
+        Rayfield:Notify({Title = "Loaded", Content = "Build loaded into your plot using SaveInstance", Duration = 10})
+
+        -- Optional: Try to make parts editable again
+        for _, part in ipairs(myBuild:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.Anchored = false
             end
         end
-        collect(sourceBuild)
-
-        if #allParts == 0 then
-            Rayfield:Notify({Title = "Error", Content = "No parts found"})
-            return
-        end
-
-        local sumX, sumY, sumZ = 0, 0, 0
-        for _, p in ipairs(allParts) do
-            local pos = p.Position
-            sumX += pos.X; sumY += pos.Y; sumZ += pos.Z
-        end
-        local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
-
-        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
-
-        Rayfield:Notify({Title = "Copying...", Content = "Processing build...", Duration = 6})
-
-        local createdParts = {}
-
-        for _, sourcePart in ipairs(allParts) do
-            local offset = sourcePart.Position - sourceCenter
-            local targetPos = destOrigin + offset
-            local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
-
-            local partType = "Normal"
-            local class = sourcePart.ClassName
-            if class == "TrussPart" then partType = "Truss"
-            elseif class == "WedgePart" then partType = "Wedge"
-            elseif class == "CornerWedgePart" then partType = "Corner"
-            elseif class == "Cylinder" or sourcePart.Shape == Enum.PartType.Cylinder then partType = "Cylinder"
-            elseif sourcePart.Shape == Enum.PartType.Ball then partType = "Ball"
-            elseif class == "Seat" then partType = "Seat"
-            elseif class == "VehicleSeat" then partType = "Vehicle Seat"
-            elseif class == "SpawnLocation" then partType = "Spawn"
-            end
-
-            local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
-
-            if newPart and newPart:IsA("BasePart") then
-                table.insert(createdParts, newPart)
-
-                -- Resize First
-                remote:InvokeServer("SyncResize",
-                    {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
-                    { "ResizeFace", Enum.NormalId.Right, sourcePart.Size.X - newPart.Size.X, Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), "X", Vector3.xAxis, "Normal" }
-                )
-                task.wait(0.5)
-
-                -- Rotate
-                remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
-                task.wait(0.5)
-
-                -- Move
-                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
-                task.wait(0.5)
-            end
-        end
-
-        if #createdParts > 0 then
-            remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
-        end
-
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 8})
     end,
 })
 
@@ -157,4 +105,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Town Plot Copier", Content = "Ready - Select player and copy", Duration = 8})
+Rayfield:Notify({Title = "SaveInstance Mode", Content = "This method may not work perfectly with F3X", Duration = 8})
