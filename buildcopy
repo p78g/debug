@@ -1,9 +1,9 @@
--- Town Build Copier - Exact SyncRotate from your log + Height + Resize
+-- Town Build Copier - Height Adjusted + Simple Working Resize
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Copier - Exact Rotation Fix",
+    Name = "Town Copier - Height Adjusted",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -26,7 +26,7 @@ end
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
 local localBuildFolder = localBuildArea:WaitForChild("Build")
 
-local BASE_Y = 5
+local BASE_Y = 4          -- Decreased by 1 as requested
 local X_OFFSET = -28.637
 local Z_OFFSET = -17.512
 local EXTRA_Y = 0
@@ -62,8 +62,8 @@ Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, Current
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build - Exact SyncRotate",
-    Description = "Using your exact SyncRotate structure",
+    Name = "🔄 Copy Build (Height = 4)",
+    Description = "Simple version - Height fixed, trying to restore resize",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player!"}) 
@@ -98,15 +98,13 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Using exact SyncRotate from your log...", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Height = 4 | Trying resize", Duration = 6})
 
         local createdParts = {}
 
         for _, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
-
-            -- Full target CFrame with correct rotation
             local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
 
             local partType = "Normal"
@@ -126,36 +124,20 @@ Tab:CreateButton({
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- === EXACT SYNCROTATE FROM YOUR LOG ===
-                local rotateArgs = {
-                    "SyncRotate",
-                    {
-                        {
-                            Part = newPart,
-                            CFrame = targetCFrame
-                        }
-                    },
-                    {
-                        "AroundPivot",
-                        CFrame.new(0, 0, 0, targetCFrame.XVector.X, targetCFrame.XVector.Y, targetCFrame.XVector.Z, 
-                                   targetCFrame.YVector.X, targetCFrame.YVector.Y, targetCFrame.YVector.Z, 
-                                   targetCFrame.ZVector.X, targetCFrame.ZVector.Y, targetCFrame.ZVector.Z),
-                        "Center",
-                        CFrame.new(targetPos.X, targetPos.Y, targetPos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1),
-                        "Center"
-                    }
-                }
-                remote:InvokeServer(unpack(rotateArgs))
-
-                task.wait(0.5)
+                -- Simple Rotation
+                remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
+                task.wait(0.4)
 
                 -- Move
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
-                task.wait(0.5)
+                task.wait(0.4)
 
-                -- Resize
-                remote:InvokeServer("SyncResize", {{Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size}}, {"ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal"})
-                task.wait(0.6)
+                -- Resize - Simple version that previously worked
+                remote:InvokeServer("SyncResize", 
+                    {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
+                    { "ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal" }
+                )
+                task.wait(0.5)
             end
         end
 
@@ -172,4 +154,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Exact SyncRotate Applied", Content = "Using your provided rotation structure", Duration = 8})
+Rayfield:Notify({Title = "Height Adjusted to 4", Content = "Resize should work again", Duration = 8})
