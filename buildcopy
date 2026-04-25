@@ -1,6 +1,5 @@
 -- =============================================
--- BUILD COPIER – Correct Positioning & Rotation
--- Uses plot centre as reference (3 studs above plot part)
+-- BUILD COPIER – Uses exact remote call structures
 -- =============================================
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
@@ -19,19 +18,14 @@ local selectedPlayer = nil
 local playerMapping = {}
 local dropdownObject = nil
 
--- Helper: get the plot's BasePart (the physical plot)
-local function getPlotPart(buildAreaObject)
-    if buildAreaObject:IsA("BasePart") then return buildAreaObject end
-    if buildAreaObject:IsA("Model") then
-        if buildAreaObject.PrimaryPart then return buildAreaObject.PrimaryPart end
-        for _, child in ipairs(buildAreaObject:GetChildren()) do
-            if child:IsA("BasePart") then return child end
-        end
-    end
-    return nil
+-- Helper: get the BuildArea object (model or part) – we'll use its Position as origin
+local function getBuildAreaObject(folderName)
+    local privateArea = workspace:FindFirstChild("Private Building Areas")
+    if not privateArea then return nil end
+    return privateArea:FindFirstChild(folderName)
 end
 
--- Clear all parts from local Build folder
+-- Clear local build
 local function clearLocalBuild()
     local privateArea = workspace:FindFirstChild("Private Building Areas")
     if not privateArea then return false end
@@ -48,7 +42,7 @@ local function clearLocalBuild()
             count = count + 1
         end
     end
-    Rayfield:Notify({ Title = "Cleared", Content = "Removed " .. count .. " parts from your plot.", Duration = 3 })
+    Rayfield:Notify({ Title = "Cleared", Content = "Removed " .. count .. " parts.", Duration = 3 })
     return true
 end
 
@@ -69,8 +63,8 @@ local function refreshPlayerList()
     return options
 end
 
--- Copy a single part (with correct centre‑based offset)
-local function copyPart(sourcePart, sourcePlotPart, localPlotPart, localBuildFolder)
+-- Copy a single part using the exact remote formats
+local function copyPart(sourcePart, sourceBuildArea, localBuildArea, localBuildFolder)
     -- Part type mapping
     local typeMap = {
         Part = "Normal", Truss = "Truss", Wedge = "Wedge", Corner = "Corner",
@@ -79,19 +73,18 @@ local function copyPart(sourcePart, sourcePlotPart, localPlotPart, localBuildFol
     }
     local partType = typeMap[sourcePart.Name] or "Normal"
 
-    -- Plot centres: 3 studs above the plot part (build surface)
-    local sourceCentre = sourcePlotPart.Position + Vector3.new(0, 3, 0)
-    local localCentre = localPlotPart.Position + Vector3.new(0, 3, 0)
+    -- Use the BuildArea model's Position as the origin (centre of plot)
+    local sourceOrigin = sourceBuildArea.Position
+    local localOrigin = localBuildArea.Position
 
-    -- Offset of source part from its plot centre
-    local offset = sourcePart.Position - sourceCentre
-    local targetPos = localCentre + offset
+    -- Offset from source origin to source part
+    local offset = sourcePart.Position - sourceOrigin
+    local targetPos = localOrigin + offset
 
-    -- Preserve rotation (relative to world axes)
+    -- Preserve rotation relative to world axes
     local sourceCFrame = sourcePart.CFrame
     local targetCFrame = CFrame.new(targetPos) * (sourceCFrame - sourceCFrame.Position)
 
-    -- Debug output
     print(string.format("[COPY] %s | Offset: (%.2f, %.2f, %.2f) | Target: (%.2f, %.2f, %.2f)",
         sourcePart.Name, offset.X, offset.Y, offset.Z, targetPos.X, targetPos.Y, targetPos.Z))
 
@@ -105,8 +98,8 @@ local function copyPart(sourcePart, sourcePlotPart, localPlotPart, localBuildFol
     local remote = syncAPI:FindFirstChild("ServerEndpoint")
     if not remote then return false end
 
-    -- Create part at local centre
-    local createArgs = {"CreatePart", partType, CFrame.new(localCentre), localBuildFolder}
+    -- 1. Create part at local origin (centre)
+    local createArgs = {"CreatePart", partType, CFrame.new(localOrigin), localBuildFolder}
     local success, newPart = pcall(function() return remote:InvokeServer(unpack(createArgs)) end)
     if not success or not newPart then
         warn("CreatePart failed for " .. sourcePart.Name)
@@ -114,31 +107,46 @@ local function copyPart(sourcePart, sourcePlotPart, localPlotPart, localBuildFol
     end
     task.wait(0.1)
 
-    -- Locate the actual part in the build folder
+    -- Locate the actual part
     local actualPart = newPart
     if not actualPart:IsA("BasePart") then
         actualPart = localBuildFolder:FindFirstChild(sourcePart.Name)
     end
-    if not actualPart then
-        warn("Could not locate created part: " .. sourcePart.Name)
-        return false
-    end
+    if not actualPart then return false end
 
-    -- Rotate
-    local rotArgs = {"SyncRotate", {{Part = actualPart, CFrame = targetCFrame}}, {}}
-    pcall(function() remote:InvokeServer(unpack(rotArgs)) end)
+    -- 2. Rotate using the exact structure from the raw rotate example
+    -- Compute pivot CFrame (rotation only, no translation)
+    local pivotCFrame = targetCFrame - targetCFrame.Position
+    -- The part's current CFrame (at local origin with identity rotation)
+    local currentCFrame = CFrame.new(localOrigin)
+    local rotateArgs = {
+        "SyncRotate",
+        { { Part = actualPart, CFrame = targetCFrame } },
+        { "AroundPivot", pivotCFrame, "Center", currentCFrame, "Center" }
+    }
+    pcall(function() remote:InvokeServer(unpack(rotateArgs)) end)
     task.wait(0.1)
 
-    -- Move
-    local moveArgs = {"SyncMove", {{Part = actualPart, CFrame = CFrame.new(targetPos)}}, {}}
+    -- 3. Move using the exact structure from the raw move example
+    -- Compute delta (from current position to target position)
+    local delta = targetPos - localOrigin
+    -- The final CFrame for move action (position only, identity rotation)
+    local moveTargetCFrame = CFrame.new(targetPos)
+    local moveArgs = {
+        "SyncMove",
+        { { Part = actualPart, CFrame = moveTargetCFrame } },
+        { "AlongFace", Vector3.new(delta.X, delta.Y, delta.Z), "Global", moveTargetCFrame }
+    }
     pcall(function() remote:InvokeServer(unpack(moveArgs)) end)
     task.wait(0.1)
 
-    -- Resize
+    -- 4. Resize using the exact structure from the raw resize example
+    -- We'll resize by adjusting the face that corresponds to the size difference
+    -- For simplicity, we resize to the exact size using a generic resize command
     local resizeArgs = {
         "SyncResize",
-        {{Part = actualPart, CFrame = CFrame.new(targetPos), Size = sourcePart.Size}},
-        {"ResizeFace", Enum.NormalId.Front, 1, Vector3.zAxis, "Z", sourcePart.Size, "Normal"}
+        { { Part = actualPart, CFrame = moveTargetCFrame, Size = sourcePart.Size } },
+        { "ResizeFace", Enum.NormalId.Front, 1, Vector3.new(0,0,0), "Z", sourcePart.Size, "Normal" }
     }
     pcall(function() remote:InvokeServer(unpack(resizeArgs)) end)
 
@@ -159,19 +167,17 @@ local function copyBuild(playerDisplayName)
         return
     end
 
-    local sourceBuildArea = privateArea:FindFirstChild(sourceFolderName)
-    local sourcePlotPart = getPlotPart(sourceBuildArea)
-    if not sourceBuildArea or not sourcePlotPart then
-        Rayfield:Notify({Title = "Error", Content = "Source plot or build area missing!", Duration = 5})
+    local sourceBuildArea = getBuildAreaObject(sourceFolderName)
+    if not sourceBuildArea then
+        Rayfield:Notify({Title = "Error", Content = "Source BuildArea missing!", Duration = 5})
         return
     end
 
     local localPlayerName = game.Players.LocalPlayer.Name
     local localFolderName = localPlayerName .. "BuildArea"
-    local localBuildArea = privateArea:FindFirstChild(localFolderName)
-    local localPlotPart = getPlotPart(localBuildArea)
-    if not localBuildArea or not localPlotPart then
-        Rayfield:Notify({Title = "Error", Content = "Your plot or build area missing!", Duration = 5})
+    local localBuildArea = getBuildAreaObject(localFolderName)
+    if not localBuildArea then
+        Rayfield:Notify({Title = "Error", Content = "Your BuildArea missing!", Duration = 5})
         return
     end
 
@@ -198,7 +204,7 @@ local function copyBuild(playerDisplayName)
 
     local successCount = 0
     for _, part in ipairs(parts) do
-        if copyPart(part, sourcePlotPart, localPlotPart, localBuildFolder) then
+        if copyPart(part, sourceBuildArea, localBuildArea, localBuildFolder) then
             successCount = successCount + 1
         end
         task.wait(0.05)
@@ -258,5 +264,5 @@ MainTab:CreateButton({
     end
 })
 
-Rayfield:Notify({Title = "Build Copier Ready", Content = "Select a player and click Copy Build.", Duration = 5})
-print("✅ Build Copier loaded – uses plot centre for positioning.")
+Rayfield:Notify({Title = "Build Copier Ready", Content = "Clear your build first, then copy.", Duration = 5})
+print("✅ Build Copier loaded with exact remote call structures")
