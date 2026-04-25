@@ -1,5 +1,5 @@
--- // Load Iris GUI Library (from x0581/Iris-Exploit-Bundle)
-local Iris = loadstring(game:HttpGet("https://raw.githubusercontent.com/x0581/Iris-Exploit-Bundle/main/bundle.lua"))().Init(game.CoreGui)
+-- // Load Rayfield GUI Library
+local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/shlexware/Rayfield/main/source'))()
 
 -- // Services
 local Players = game:GetService("Players")
@@ -8,15 +8,14 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- // Settings (defaults)
+-- // Settings
 local Settings = {
     Enabled = true,
     FOV_Size = 150,
     TargetPart = "Head",
-    PartIndex = 1, -- 1=Head,2=UpperTorso,3=LowerTorso,4=HumanoidRootPart
 }
 
--- // Create FOV Circle UI (ScreenGui)
+-- // Create FOV Circle UI
 local fovGui = Instance.new("ScreenGui")
 fovGui.Name = "SilentAimFOV"
 fovGui.ResetOnSpawn = false
@@ -43,7 +42,7 @@ local function updateFOVCircle()
     fovCircle.Size = UDim2.fromOffset(Settings.FOV_Size * 2, Settings.FOV_Size * 2)
 end
 
--- // Silent Aim Core (intercepts projectiles)
+-- // Silent Aim Core (based on the raw script)
 local function getClosestTarget()
     if not Settings.Enabled then return nil end
     local mousePos = UserInputService:GetMouseLocation()
@@ -69,30 +68,33 @@ local function getClosestTarget()
     return bestTarget
 end
 
--- Hook the projectile module
-local success, Projectile = pcall(require, game:GetService("ReplicatedStorage").Modules.GunFramework.Modules.Projectile)
-if success then
-    local originalNew = Projectile.new
-    Projectile.new = function(params)
-        if params and params.Origin and params.Direction and Settings.Enabled then
-            local target = getClosestTarget()
-            if target then
-                local newDir = (target.Position - params.Origin).Unit
-                params.Direction = newDir
+-- // Hook the game's projectile system
+local function hookProjectile()
+    local success, Projectile = pcall(require, game:GetService("ReplicatedStorage").Modules.GunFramework.Modules.Projectile)
+    if success then
+        local originalNew = Projectile.new
+        Projectile.new = function(params)
+            if params and params.Origin and params.Direction and Settings.Enabled then
+                local target = getClosestTarget()
+                if target then
+                    local newDir = (target.Position - params.Origin).Unit
+                    params.Direction = newDir
+                end
             end
+            return originalNew(params)
         end
-        return originalNew(params)
+        print("Silent aim hooked successfully!")
+    else
+        warn("Projectile module not found – silent aim will not work.")
     end
-else
-    warn("Projectile module not found – silent aim may not work.")
 end
+hookProjectile()
 
--- // Update FOV circle position and color each frame
+-- // Update FOV circle position and color
 RunService.RenderStepped:Connect(function()
     local mousePos = UserInputService:GetMouseLocation()
     fovCircle.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
 
-    -- Change color if target is inside FOV
     if getClosestTarget() and Settings.Enabled then
         stroke.Color = Color3.fromRGB(255, 50, 50)   -- red
     else
@@ -100,44 +102,56 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- // ==================== IRIS GUI ====================
--- We need to continuously update the GUI. Use a loop.
-
-local window = Iris.Window({
-    Title = "Silent Aim Control",
-    Position = UDim2.new(0.1, 0, 0.2, 0),
-    Size = UDim2.new(0, 300, 0, 250)
+-- // ==================== RAYFIELD GUI ====================
+local Window = Rayfield:CreateWindow({
+    Name = "Silent Aim Control",
+    Icon = 0, -- nil for no icon
+    LoadingTitle = "Loading...",
+    LoadingSubtitle = "",
+    Theme = "Default",
 })
 
-local function drawGUI()
-    -- Enable Toggle
-    local enabledChanged
-    Settings.Enabled, enabledChanged = Iris.Toggle("Enable Silent Aim", Settings.Enabled)
-    
-    -- FOV Slider
-    local fovChanged
-    Settings.FOV_Size, fovChanged = Iris.Slider("FOV Radius", Settings.FOV_Size, 50, 400, true)
-    if fovChanged then updateFOVCircle() end
-    
-    -- Target Body Part Dropdown
-    local parts = {"Head", "UpperTorso", "LowerTorso", "HumanoidRootPart"}
-    local partChanged
-    Settings.PartIndex, partChanged = Iris.Dropdown("Target Body Part", parts, Settings.PartIndex)
-    if partChanged then
-        Settings.TargetPart = parts[Settings.PartIndex]
-    end
-    
-    -- A separator line
-    Iris.Separator()
-    Iris.Text("FOV Circle: Red = target inside, White = none")
-end
+local MainTab = Window:CreateTab("Aimbot", 4483362458) -- 4483362458 = gun icon (optional)
 
--- Main GUI update loop
-while Iris.Enabled do
-    Iris.Begin()
-    if window then
-        Iris.WindowContent(window, drawGUI)
-    end
-    Iris.End()
-    task.wait() -- adjust if needed
-end
+-- Toggle
+MainTab:CreateToggle({
+    Name = "Enable Silent Aim",
+    CurrentValue = Settings.Enabled,
+    Flag = "SilentAimEnabled",
+    Callback = function(Value)
+        Settings.Enabled = Value
+    end,
+})
+
+-- Slider for FOV
+MainTab:CreateSlider({
+    Name = "FOV Radius",
+    Range = {50, 400},
+    Increment = 1,
+    Suffix = "px",
+    CurrentValue = Settings.FOV_Size,
+    Flag = "FOVSlider",
+    Callback = function(Value)
+        Settings.FOV_Size = Value
+        updateFOVCircle()
+    end,
+})
+
+-- Dropdown for body part
+MainTab:CreateDropdown({
+    Name = "Target Body Part",
+    Options = {"Head", "UpperTorso", "LowerTorso", "HumanoidRootPart"},
+    CurrentOption = Settings.TargetPart,
+    Flag = "BodyPart",
+    Callback = function(Option)
+        Settings.TargetPart = Option
+    end,
+})
+
+-- Info label
+MainTab:CreateParagraph({
+    Name = "Info",
+    Content = "FOV Circle: Red = target inside, White = none\nWorks with projectile weapons."
+})
+
+print("Rayfield GUI loaded. Use the window to control silent aim.")
