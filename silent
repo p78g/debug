@@ -1,12 +1,5 @@
--- // Try to load Rayfield from official source
-local RayfieldLoaded, Rayfield = pcall(function()
-    return loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Rayfield/main/source.lua"))()
-end)
-
-if not RayfieldLoaded or not Rayfield then
-    warn("Rayfield failed to load, using native GUI instead")
-    -- We'll create a native GUI later
-end
+-- // Load Rayfield (correct URL)
+local Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Rayfield/main/source.lua"))()
 
 -- // Services
 local Players = game:GetService("Players")
@@ -15,254 +8,143 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- // Settings
+-- // Settings (linked to UI)
 local Settings = {
     Enabled = true,
-    FOV_Size = 150,
+    FOV = 150,
     TargetPart = "Head",
 }
 
--- // Create FOV Circle UI (always works)
+-- // Visual FOV Circle (red when target inside)
 local fovGui = Instance.new("ScreenGui")
 fovGui.Name = "SilentAimFOV"
 fovGui.ResetOnSpawn = false
 fovGui.Parent = game:GetService("CoreGui")
 
-local fovCircle = Instance.new("Frame")
-fovCircle.BackgroundTransparency = 1
-fovCircle.BorderSizePixel = 0
-fovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
-fovCircle.Size = UDim2.fromOffset(Settings.FOV_Size * 2, Settings.FOV_Size * 2)
-fovCircle.Parent = fovGui
+local circle = Instance.new("Frame")
+circle.BackgroundTransparency = 1
+circle.BorderSizePixel = 0
+circle.AnchorPoint = Vector2.new(0.5, 0.5)
+circle.Size = UDim2.fromOffset(Settings.FOV * 2, Settings.FOV * 2)
+circle.Parent = fovGui
 
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(1, 0)
-corner.Parent = fovCircle
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(1, 0)
+uiCorner.Parent = circle
 
 local stroke = Instance.new("UIStroke")
-stroke.Color = Color3.fromRGB(255, 0, 0)
 stroke.Thickness = 2
 stroke.Transparency = 0.4
-stroke.Parent = fovCircle
+stroke.Color = Color3.fromRGB(255, 255, 255)
+stroke.Parent = circle
 
-local function updateFOVCircle()
-    fovCircle.Size = UDim2.fromOffset(Settings.FOV_Size * 2, Settings.FOV_Size * 2)
+local function updateFOVSize()
+    circle.Size = UDim2.fromOffset(Settings.FOV * 2, Settings.FOV * 2)
 end
 
--- // Silent Aim Core
+-- // Silent Aim Logic (from your raw script)
 local function getClosestTarget()
     if not Settings.Enabled then return nil end
     local mousePos = UserInputService:GetMouseLocation()
-    local bestDist = Settings.FOV_Size
-    local bestTarget = nil
+    local bestDist = Settings.FOV
+    local bestPart = nil
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character then
-            local targetPart = player.Character:FindFirstChild(Settings.TargetPart)
+            local part = player.Character:FindFirstChild(Settings.TargetPart)
             local humanoid = player.Character:FindFirstChildWhichIsA("Humanoid")
-            if targetPart and humanoid and humanoid.Health > 0 then
-                local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+            if part and humanoid and humanoid.Health > 0 then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
                 if onScreen then
                     local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
                     if dist < bestDist then
                         bestDist = dist
-                        bestTarget = targetPart
+                        bestPart = part
                     end
                 end
             end
         end
     end
-    return bestTarget
+    return bestPart
 end
 
--- Hook projectile (same as original script)
-local function hookProjectile()
+-- Hook into projectile creation (same as raw script)
+local function hookProjectiles()
     local replicatedStorage = game:GetService("ReplicatedStorage")
-    local projectileModule = replicatedStorage:FindFirstChild("Modules")
-    if projectileModule then
-        projectileModule = projectileModule:FindFirstChild("GunFramework")
-        if projectileModule then
-            projectileModule = projectileModule:FindFirstChild("Modules")
-            if projectileModule then
-                local success, Projectile = pcall(require, projectileModule.Projectile)
-                if success and Projectile then
-                    local originalNew = Projectile.new
-                    Projectile.new = function(params)
-                        if params and params.Origin and params.Direction and Settings.Enabled then
-                            local target = getClosestTarget()
-                            if target then
-                                local newDir = (target.Position - params.Origin).Unit
-                                params.Direction = newDir
-                            end
-                        end
-                        return originalNew(params)
-                    end
-                    print("[Silent Aim] Hooked!")
-                    return
-                end
+    local module = replicatedStorage:FindFirstChild("Modules")
+    if module then module = module:FindFirstChild("GunFramework") end
+    if module then module = module:FindFirstChild("Modules") end
+    if not module then 
+        warn("Projectile module not found")
+        return 
+    end
+    
+    local success, Projectile = pcall(require, module.Projectile)
+    if not success or not Projectile then 
+        warn("Failed to require Projectile")
+        return
+    end
+    
+    local originalNew = Projectile.new
+    Projectile.new = function(params)
+        if params and params.Origin and params.Direction and Settings.Enabled then
+            local target = getClosestTarget()
+            if target then
+                params.Direction = (target.Position - params.Origin).Unit
             end
         end
+        return originalNew(params)
     end
-    warn("[Silent Aim] Projectile module not found")
+    print("Silent aim hooked")
 end
-hookProjectile()
 
--- Update FOV circle
+hookProjectiles()
+
+-- // Update FOV circle position & color
 RunService.RenderStepped:Connect(function()
     local mousePos = UserInputService:GetMouseLocation()
-    fovCircle.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
-    stroke.Color = (getClosestTarget() and Settings.Enabled) and Color3.fromRGB(255, 50, 50) or Color3.fromRGB(255, 255, 255)
+    circle.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
+    
+    local targetInside = getClosestTarget() ~= nil
+    stroke.Color = (targetInside and Settings.Enabled) and Color3.fromRGB(255, 50, 50) or Color3.fromRGB(255, 255, 255)
 end)
 
--- // ========== GUI Creation ==========
-if RayfieldLoaded and Rayfield then
-    -- Use Rayfield GUI
-    local Window = Rayfield:CreateWindow({
-        Name = "Silent Aim Control",
-        LoadingTitle = "Aimbot",
-        Theme = "Default",
-    })
-    local MainTab = Window:CreateTab("Aimbot")
-    MainTab:CreateToggle({
-        Name = "Enable",
-        CurrentValue = Settings.Enabled,
-        Callback = function(v) Settings.Enabled = v end,
-    })
-    MainTab:CreateSlider({
-        Name = "FOV Radius",
-        Range = {50, 400},
-        CurrentValue = Settings.FOV_Size,
-        Callback = function(v) Settings.FOV_Size = v updateFOVCircle() end,
-    })
-    MainTab:CreateDropdown({
-        Name = "Body Part",
-        Options = {"Head", "UpperTorso", "LowerTorso", "HumanoidRootPart"},
-        CurrentOption = Settings.TargetPart,
-        Callback = function(v) Settings.TargetPart = v end,
-    })
-    print("Rayfield GUI loaded")
-else
-    -- Fallback: Native GUI using Frame + TextButtons + Slider
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "NativeControlPanel"
-    gui.Parent = game:GetService("CoreGui")
-    
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 260, 0, 200)
-    frame.Position = UDim2.new(0.5, -130, 0.2, 0)
-    frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    frame.BorderSizePixel = 0
-    frame.Active = true
-    frame.Draggable = true
-    frame.Parent = gui
-    
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, 0, 0, 30)
-    title.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    title.Text = "Silent Aim Control (Native)"
-    title.TextColor3 = Color3.fromRGB(255,255,255)
-    title.Font = Enum.Font.GothamBold
-    title.TextSize = 14
-    title.Parent = frame
-    
-    -- Toggle
-    local toggleBtn = Instance.new("TextButton")
-    toggleBtn.Size = UDim2.new(0.9, 0, 0, 30)
-    toggleBtn.Position = UDim2.new(0.05, 0, 0.2, 0)
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
-    toggleBtn.Text = "Enabled: ON"
-    toggleBtn.TextColor3 = Color3.fromRGB(255,255,255)
-    toggleBtn.Parent = frame
-    toggleBtn.MouseButton1Click:Connect(function()
-        Settings.Enabled = not Settings.Enabled
-        toggleBtn.Text = Settings.Enabled and "Enabled: ON" or "Enabled: OFF"
-        toggleBtn.BackgroundColor3 = Settings.Enabled and Color3.fromRGB(0,200,0) or Color3.fromRGB(200,0,0)
-    end)
-    
-    -- FOV Slider (simple placeholder)
-    local fovText = Instance.new("TextLabel")
-    fovText.Size = UDim2.new(0.9, 0, 0, 20)
-    fovText.Position = UDim2.new(0.05, 0, 0.35, 0)
-    fovText.BackgroundTransparency = 1
-    fovText.Text = "FOV: " .. Settings.FOV_Size
-    fovText.TextColor3 = Color3.fromRGB(255,255,255)
-    fovText.Parent = frame
-    
-    local sliderBg = Instance.new("Frame")
-    sliderBg.Size = UDim2.new(0.8, 0, 0, 10)
-    sliderBg.Position = UDim2.new(0.1, 0, 0.45, 0)
-    sliderBg.BackgroundColor3 = Color3.fromRGB(80,80,80)
-    sliderBg.Parent = frame
-    
-    local sliderFill = Instance.new("Frame")
-    sliderFill.Size = UDim2.new(Settings.FOV_Size / 400, 0, 1, 0)
-    sliderFill.BackgroundColor3 = Color3.fromRGB(0,150,255)
-    sliderFill.Parent = sliderBg
-    
-    -- Simple slider drag (mouse)
-    local dragging = false
-    sliderBg.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-        end
-    end)
-    sliderBg.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-        end
-    end)
-    sliderBg.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local percent = math.clamp((input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
-            local newFOV = math.floor(50 + percent * 350)
-            Settings.FOV_Size = newFOV
-            updateFOVCircle()
-            fovText.Text = "FOV: " .. Settings.FOV_Size
-            sliderFill.Size = UDim2.new(percent, 0, 1, 0)
-        end
-    end)
-    
-    -- Dropdown for body part
-    local dropdownBtn = Instance.new("TextButton")
-    dropdownBtn.Size = UDim2.new(0.9, 0, 0, 30)
-    dropdownBtn.Position = UDim2.new(0.05, 0, 0.6, 0)
-    dropdownBtn.BackgroundColor3 = Color3.fromRGB(70,70,70)
-    dropdownBtn.Text = "Part: " .. Settings.TargetPart
-    dropdownBtn.Parent = frame
-    
-    local partsList = {"Head", "UpperTorso", "LowerTorso", "HumanoidRootPart"}
-    local dropdownOpen = false
-    local dropdownFrame = nil
-    
-    local function updateDropdown()
-        if dropdownFrame then dropdownFrame:Destroy() end
-        if not dropdownOpen then return end
-        dropdownFrame = Instance.new("Frame")
-        dropdownFrame.Size = UDim2.new(0.9, 0, 0, 120)
-        dropdownFrame.Position = UDim2.new(0.05, 0, 0.75, 0)
-        dropdownFrame.BackgroundColor3 = Color3.fromRGB(50,50,50)
-        dropdownFrame.Parent = frame
-        for i, part in ipairs(partsList) do
-            local btn = Instance.new("TextButton")
-            btn.Size = UDim2.new(1, 0, 0, 30)
-            btn.Position = UDim2.new(0, 0, 0, (i-1)*30)
-            btn.BackgroundColor3 = Color3.fromRGB(60,60,60)
-            btn.Text = part
-            btn.TextColor3 = Color3.fromRGB(255,255,255)
-            btn.Parent = dropdownFrame
-            btn.MouseButton1Click:Connect(function()
-                Settings.TargetPart = part
-                dropdownBtn.Text = "Part: " .. part
-                dropdownOpen = false
-                updateDropdown()
-            end)
-        end
-    end
-    
-    dropdownBtn.MouseButton1Click:Connect(function()
-        dropdownOpen = not dropdownOpen
-        updateDropdown()
-    end)
-    
-    print("Native GUI loaded (Rayfield unavailable)")
-end
+-- // ========== RAYFIELD MENU ==========
+local window = Rayfield:CreateWindow({
+    Name = "Silent Aim",
+    LoadingTitle = "Loading...",
+    Theme = "Default",
+})
+
+local mainTab = window:CreateTab("Aimbot")
+
+mainTab:CreateToggle({
+    Name = "Enable Silent Aim",
+    CurrentValue = Settings.Enabled,
+    Callback = function(v)
+        Settings.Enabled = v
+    end,
+})
+
+mainTab:CreateSlider({
+    Name = "FOV Radius",
+    Range = {50, 400},
+    Increment = 1,
+    Suffix = "px",
+    CurrentValue = Settings.FOV,
+    Callback = function(v)
+        Settings.FOV = v
+        updateFOVSize()
+    end,
+})
+
+mainTab:CreateDropdown({
+    Name = "Target Body Part",
+    Options = {"Head", "UpperTorso", "LowerTorso", "HumanoidRootPart"},
+    CurrentOption = Settings.TargetPart,
+    Callback = function(v)
+        Settings.TargetPart = v
+    end,
+})
+
+print("Rayfield menu loaded. Use it to control silent aim.")
