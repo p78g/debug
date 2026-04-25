@@ -1,16 +1,14 @@
--- Town Build Copier - Final Combined Version (Aquoric Logic + Rayfield UI)
--- Direct position creation + improved rotation & resize
+-- Town Build Copier - Fixed CreatePart Issue (Fresh Remote + Folder Every Call)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Build Copier",
-    LoadingTitle = "Loading Combined Script...",
-    LoadingSubtitle = "Aquoric Logic + Modern Fixes",
+    Name = "Town Build Copier - Fixed",
+    LoadingTitle = "Applying Fixes...",
     Theme = "Default"
 })
 
-local Tab = Window:CreateTab("Build Copier", "hammer")
+local Tab = Window:CreateTab("Copier", "hammer")
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -18,20 +16,17 @@ local LocalPlayer = Players.LocalPlayer
 
 local BUILDING_AREAS = Workspace:WaitForChild("Private Building Areas")
 
-local function getRemote()
+local function getFreshRemote()
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    local tool = char:WaitForChild("Building Tools", 8)
-    if not tool then error("Equip Building Tools first!") end
+    local tool = char:WaitForChild("Building Tools", 5)
+    if not tool then error("Equip Building Tools!") end
     return tool:WaitForChild("SyncAPI"):WaitForChild("ServerEndpoint")
 end
 
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
-local localBuildFolder = localBuildArea:WaitForChild("Build")
 
 local baseHeight = 5
 local selectedPlayer = nil
-
--- Offsets (defaults from your measurements)
 local realOffsetX, realOffsetY, realOffsetZ = -28.637, -17.512, 0
 
 local playerOptions = {}
@@ -46,8 +41,7 @@ local function refreshPlayers()
 end
 refreshPlayers()
 
--- UI
-Tab:CreateSection("Player Selection")
+Tab:CreateSection("Player")
 local Dropdown = Tab:CreateDropdown({
     Name = "Select Player to Copy From",
     Options = playerOptions,
@@ -58,31 +52,28 @@ local Dropdown = Tab:CreateDropdown({
     end,
 })
 
-Tab:CreateSection("Real Copy Offsets")
+Tab:CreateSection("Offsets")
 Tab:CreateSlider({ Name = "X Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = realOffsetX, Callback = function(v) realOffsetX = v end })
 Tab:CreateSlider({ Name = "Y Offset", Range = {-50, 150}, Increment = 0.01, CurrentValue = realOffsetY, Callback = function(v) realOffsetY = v end })
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = realOffsetZ, Callback = function(v) realOffsetZ = v end })
 
--- ==================== MAIN COPY FUNCTION ====================
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Aquoric Logic)",
-    Description = "Creates parts directly at mirrored position + proper rotation",
+    Name = "🔄 Copy Build (Fixed Version)",
+    Description = "Fresh remote + folder every part + longer delays",
     Callback = function()
         if not selectedPlayer then
-            Rayfield:Notify({Title = "Error", Content = "No player selected!", Duration = 5})
-            return
+            Rayfield:Notify({Title = "Error", Content = "Select a player first!"}) 
+            return 
         end
 
-        local remote = getRemote()
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
-        if not sourceArea then
-            Rayfield:Notify({Title = "Error", Content = "Source plot not found!"}) 
+        if not sourceArea then 
+            Rayfield:Notify({Title = "Error", Content = "Source area not found"}) 
             return 
         end
 
         local sourceBuild = sourceArea:WaitForChild("Build")
 
-        -- Collect all BaseParts
         local allParts = {}
         local function collect(obj)
             for _, v in ipairs(obj:GetDescendants()) do
@@ -92,11 +83,10 @@ Tab:CreateButton({
         collect(sourceBuild)
 
         if #allParts == 0 then
-            Rayfield:Notify({Title = "Error", Content = "No parts found in source!"}) 
+            Rayfield:Notify({Title = "Error", Content = "No parts in source"}) 
             return 
         end
 
-        -- Calculate source center (core logic from aquoric script)
         local sumX, sumY, sumZ = 0, 0, 0
         for _, p in ipairs(allParts) do
             local pos = p.Position
@@ -106,14 +96,14 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(realOffsetX, baseHeight + realOffsetY, realOffsetZ)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Creating " .. #allParts .. " parts directly...", Duration = 6})
+        Rayfield:Notify({Title = "Starting Copy", Content = "Trying " .. #allParts .. " parts with fresh calls...", Duration = 6})
 
-        local createdParts = {}
+        local created = 0
 
         for i, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
-            local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation   -- Proper rotation
+            local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
 
             local partType = "Normal"
             local class = sourcePart.ClassName
@@ -127,101 +117,44 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            print(string.format("Creating part %d/%d | %s | Pos: %s", i, #allParts, partType, tostring(targetPos)))
-
-            -- Fresh folder reference + Create directly at target position
+            -- **Fresh remote and folder every single part**
+            local remote = getFreshRemote()
             local currentFolder = localBuildArea:WaitForChild("Build")
-            local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), currentFolder)
 
-            if newPart and newPart:IsA("BasePart") then
-                table.insert(createdParts, newPart)
+            print(string.format("Attempt %d/%d | %s | Pos: %.2f, %.2f, %.2f", i, #allParts, partType, targetPos.X, targetPos.Y, targetPos.Z))
 
-                -- Rotation
+            local success, newPart = pcall(function()
+                return remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), currentFolder)
+            end)
+
+            if success and newPart and newPart:IsA("BasePart") then
+                created = created + 1
+                print("✓ Created part", i)
+
+                task.wait(0.6)
+
+                -- Rotation + Move + Resize with longer delays
                 remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
-                task.wait(0.4)
-
-                -- Ensure final position
-                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
-                task.wait(0.4)
-
-                -- Resize
-                remote:InvokeServer("SyncResize", {{Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size}}, {"ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal"})
                 task.wait(0.5)
+                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                task.wait(0.5)
+                remote:InvokeServer("SyncResize", {{Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size}}, {"ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal"})
+                task.wait(0.6)
             else
-                warn("Failed to create part", i)
+                print("✗ Failed to create part", i)
+                warn("Result:", newPart)
             end
 
-            task.wait(0.3) -- Safety delay between parts
+            task.wait(0.8) -- Very important delay to prevent rate limiting
         end
 
-        -- Group
-        if #createdParts > 0 then
-            remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
-        end
-
-        Rayfield:Notify({Title = "Copy Finished", Content = #createdParts .. " / " .. #allParts .. " parts created", Duration = 8})
+        Rayfield:Notify({Title = "Copy Done", Content = created .. " / " .. #allParts .. " parts created. Check console.", Duration = 10})
     end,
 })
 
--- Ghost Preview
-Tab:CreateButton({
-    Name = "👻 Show Ghost Preview",
-    Callback = function()
-        local old = Workspace:FindFirstChild("GhostPreview")
-        if old then old:Destroy() end
-
-        if not selectedPlayer then return Rayfield:Notify({Title="Error", Content="Select player first"}) end
-
-        local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
-        local sourceBuild = sourceArea:WaitForChild("Build")
-
-        local allParts = {}
-        local function collect(obj)
-            for _, v in ipairs(obj:GetDescendants()) do
-                if v:IsA("BasePart") then table.insert(allParts, v) end
-            end
-        end
-        collect(sourceBuild)
-
-        local sumX, sumY, sumZ = 0,0,0
-        for _, p in ipairs(allParts) do
-            local pos = p.Position
-            sumX += pos.X; sumY += pos.Y; sumZ += pos.Z
-        end
-        local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
-
-        local ghostFolder = Instance.new("Folder")
-        ghostFolder.Name = "GhostPreview"
-        ghostFolder.Parent = Workspace
-
-        local destOrigin = localBuildArea.Position + Vector3.new(realOffsetX, baseHeight + realOffsetY, realOffsetZ)
-
-        for _, sourcePart in ipairs(allParts) do
-            local offset = sourcePart.Position - sourceCenter
-            local targetPos = destOrigin + offset
-            local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
-
-            local clone = sourcePart:Clone()
-            clone.Anchored = true
-            clone.Transparency = 0.65
-            clone.Color = Color3.fromRGB(0, 255, 120)
-            clone.CanCollide = false
-            clone.CFrame = targetCFrame
-            clone.Parent = ghostFolder
-        end
-
-        Rayfield:Notify({Title = "Ghost Preview", Content = "Check if rotation looks correct", Duration = 6})
-    end,
-})
-
-Tab:CreateButton({ Name = "Clear Ghost Preview", Callback = function()
-    local g = Workspace:FindFirstChild("GhostPreview")
-    if g then g:Destroy() end
-end })
-
-Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
+Tab:CreateButton({ Name = "Refresh Players", Callback = function()
     refreshPlayers()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Combined Script Loaded", Content = "Uses Aquoric center + direct position logic", Duration = 8})
+Rayfield:Notify({Title = "Fixed Script Loaded", Content = "Fresh remote + folder every part + long delays", Duration = 8})
