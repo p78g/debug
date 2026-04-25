@@ -1,6 +1,5 @@
 -- =============================================
--- BUILD COPIER using Rayfield
--- Copies any player's build to your plot
+-- BUILD COPIER – Fixed Creation & Positioning
 -- =============================================
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
@@ -8,50 +7,18 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Window = Rayfield:CreateWindow({
     Name = "Build Copier",
     LoadingTitle = "Build Copier",
-    LoadingSubtitle = "Select a player and copy their build",
-    ConfigurationSaving = {
-        Enabled = true,
-        FolderName = "BuildCopier",
-        FileName = "Settings"
-    },
+    ConfigurationSaving = { Enabled = true, FolderName = "BuildCopier", FileName = "Settings" },
     Theme = "Default",
 })
 
 local MainTab = Window:CreateTab("Copy Build", "Copy")
-
 MainTab:CreateSection("Player Selection")
 
--- Variables
 local selectedPlayer = nil
-local playerMapping = {}           -- display name -> folder name (e.g. "PlayerName" -> "PlayerNameBuildArea")
+local playerMapping = {}
 local dropdownObject = nil
 
--- Helper: refresh the list of players with BuildArea folders
-local function refreshPlayerList()
-    local privateArea = workspace:FindFirstChild("Private Building Areas")
-    if not privateArea then
-        Rayfield:Notify({
-            Title = "Error",
-            Content = "Private Building Areas not found!",
-            Duration = 5
-        })
-        return {}
-    end
-
-    local options = {}
-    playerMapping = {}
-    for _, child in ipairs(privateArea:GetChildren()) do
-        local name = child.Name
-        if string.sub(name, -9) == "BuildArea" then
-            local playerName = string.sub(name, 1, -10)
-            table.insert(options, playerName)
-            playerMapping[playerName] = name
-        end
-    end
-    return options
-end
-
--- Helper: get the plot's BasePart (the actual physical part representing the plot)
+-- Helper: get the plot’s root part (respects rotation)
 local function getPlotPart(plotFolderName)
     local privateArea = workspace:FindFirstChild("Private Building Areas")
     if not privateArea then return nil end
@@ -67,7 +34,45 @@ local function getPlotPart(plotFolderName)
     return nil
 end
 
--- Core copy function for a single part
+-- Clear all parts from local Build folder
+local function clearLocalBuild()
+    local privateArea = workspace:FindFirstChild("Private Building Areas")
+    if not privateArea then return false end
+    local localFolder = game.Players.LocalPlayer.Name .. "BuildArea"
+    local localBuildArea = privateArea:FindFirstChild(localFolder)
+    if not localBuildArea then return false end
+    local buildFolder = localBuildArea:FindFirstChild("Build")
+    if not buildFolder then return false end
+
+    local count = 0
+    for _, child in ipairs(buildFolder:GetChildren()) do
+        if child:IsA("BasePart") then
+            child:Destroy()
+            count = count + 1
+        end
+    end
+    Rayfield:Notify({ Title = "Cleared", Content = "Removed " .. count .. " parts from your plot.", Duration = 3 })
+    return true
+end
+
+-- Refresh player list
+local function refreshPlayerList()
+    local privateArea = workspace:FindFirstChild("Private Building Areas")
+    if not privateArea then return {} end
+    local options = {}
+    playerMapping = {}
+    for _, child in ipairs(privateArea:GetChildren()) do
+        local name = child.Name
+        if name:sub(-9) == "BuildArea" then
+            local pName = name:sub(1, -10)
+            table.insert(options, pName)
+            playerMapping[pName] = name
+        end
+    end
+    return options
+end
+
+-- Core copy function (with detailed logs)
 local function copyPart(sourcePart, sourcePlotPart, localPlotPart, localBuildFolder)
     -- Part type mapping
     local typeMap = {
@@ -77,15 +82,21 @@ local function copyPart(sourcePart, sourcePlotPart, localPlotPart, localBuildFol
     }
     local partType = typeMap[sourcePart.Name] or "Normal"
 
-    -- Origins (build surface 3 studs above plot)
-    local sourceOrigin = sourcePlotPart.Position + Vector3.new(0, 3, 0)
-    local localOrigin = localPlotPart.Position + Vector3.new(0, 3, 0)
+    -- Use CFrame for origin (respects plot rotation)
+    local sourceOriginCF = sourcePlotPart.CFrame * CFrame.new(0, 3, 0)
+    local localOriginCF = localPlotPart.CFrame * CFrame.new(0, 3, 0)
 
-    -- Relative offset and target CFrame (position + rotation)
-    local relativePos = sourcePart.Position - sourceOrigin
-    local targetPos = localOrigin + relativePos
-    local sourceCFrame = sourcePart.CFrame
-    local targetCFrame = CFrame.new(targetPos) * (sourceCFrame - sourceCFrame.Position)
+    -- Relative offset in world space (source part position relative to source origin)
+    local relativeOffset = sourcePlotPart.CFrame:Inverse() * sourcePart.CFrame.Position
+    local targetPos = localPlotPart.CFrame * relativeOffset + Vector3.new(0, 3, 0)
+
+    -- Preserve rotation relative to the plot
+    local sourceRot = sourcePart.CFrame - sourcePart.CFrame.Position
+    local targetCFrame = CFrame.new(targetPos) * (sourceRot)
+
+    print(string.format("[COPY] %s | Type: %s | Rel: (%.2f,%.2f,%.2f) | Target: (%.2f,%.2f,%.2f)",
+        sourcePart.Name, partType, relativeOffset.X, relativeOffset.Y, relativeOffset.Z,
+        targetPos.X, targetPos.Y, targetPos.Z))
 
     -- Get remote
     local char = game.Players.LocalPlayer.Character
@@ -97,45 +108,39 @@ local function copyPart(sourcePart, sourcePlotPart, localPlotPart, localBuildFol
     local remote = syncAPI:FindFirstChild("ServerEndpoint")
     if not remote then return false end
 
-    -- 1. Create part at centre of local plot
-    local createArgs = {"CreatePart", partType, CFrame.new(localOrigin), localBuildFolder}
-    local success, newPart = pcall(function()
-        return remote:InvokeServer(unpack(createArgs))
-    end)
+    -- Create part
+    local createArgs = {"CreatePart", partType, localOriginCF, localBuildFolder}
+    local success, newPart = pcall(function() return remote:InvokeServer(unpack(createArgs)) end)
     if not success or not newPart then
-        warn("CreatePart failed:", sourcePart.Name)
+        warn("CreatePart failed for " .. sourcePart.Name)
         return false
     end
+    task.wait(0.1)
 
-    -- Small delay to ensure part exists in workspace
-    task.wait(0.05)
-
-    -- 2. Move and rotate in one call (most building tools support CFrame move)
-    local moveArgs = {"SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {}}
-    local moveSuccess, moveErr = pcall(function()
-        return remote:InvokeServer(unpack(moveArgs))
-    end)
-    if not moveSuccess then
-        warn("SyncMove failed:", moveErr)
-        -- fallback: try separate rotate and move
-        local rotArgs = {"SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {}}
-        pcall(function() remote:InvokeServer(unpack(rotArgs)) end)
-        local posArgs = {"SyncMove", {{Part = newPart, CFrame = CFrame.new(targetPos)}}, {}}
-        pcall(function() remote:InvokeServer(unpack(posArgs)) end)
+    -- Locate actual part
+    local actualPart = newPart
+    if not actualPart:IsA("BasePart") then
+        actualPart = localBuildFolder:FindFirstChild(sourcePart.Name)
     end
+    if not actualPart then return false end
 
-    -- 3. Resize
+    -- Rotate
+    local rotArgs = {"SyncRotate", {{Part = actualPart, CFrame = targetCFrame}}, {}}
+    pcall(function() remote:InvokeServer(unpack(rotArgs)) end)
+    task.wait(0.1)
+
+    -- Move
+    local moveArgs = {"SyncMove", {{Part = actualPart, CFrame = CFrame.new(targetPos)}}, {}}
+    pcall(function() remote:InvokeServer(unpack(moveArgs)) end)
+    task.wait(0.1)
+
+    -- Resize
     local resizeArgs = {
         "SyncResize",
-        {{Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size}},
+        {{Part = actualPart, CFrame = CFrame.new(targetPos), Size = sourcePart.Size}},
         {"ResizeFace", Enum.NormalId.Front, 1, Vector3.zAxis, "Z", sourcePart.Size, "Normal"}
     }
-    local resizeSuccess, resizeErr = pcall(function()
-        return remote:InvokeServer(unpack(resizeArgs))
-    end)
-    if not resizeSuccess then
-        warn("SyncResize failed:", resizeErr)
-    end
+    pcall(function() remote:InvokeServer(unpack(resizeArgs)) end)
 
     return true
 end
@@ -148,43 +153,39 @@ local function copyBuild(playerDisplayName)
         return
     end
 
-    -- Source (selected player)
-    local sourceFolderName = playerMapping[playerDisplayName]
-    if not sourceFolderName then
-        Rayfield:Notify({Title = "Error", Content = "Source folder not found for " .. playerDisplayName, Duration = 5})
-        return
-    end
-    local sourceBuildArea = privateArea:FindFirstChild(sourceFolderName)
-    local sourcePlotPart = getPlotPart(sourceFolderName)
-    if not sourceBuildArea or not sourcePlotPart then
-        Rayfield:Notify({Title = "Error", Content = "Could not locate source plot or build area", Duration = 5})
+    local sourceFolder = playerMapping[playerDisplayName]
+    if not sourceFolder then
+        Rayfield:Notify({Title = "Error", Content = "Source folder not found!", Duration = 5})
         return
     end
 
-    -- Destination (local player)
+    local sourceBuildArea = privateArea:FindFirstChild(sourceFolder)
+    local sourcePlot = getPlotPart(sourceFolder)
+    if not sourceBuildArea or not sourcePlot then
+        Rayfield:Notify({Title = "Error", Content = "Source plot missing!", Duration = 5})
+        return
+    end
+
     local localPlayerName = game.Players.LocalPlayer.Name
-    local localFolderName = localPlayerName .. "BuildArea"
-    local localBuildArea = privateArea:FindFirstChild(localFolderName)
-    local localPlotPart = getPlotPart(localFolderName)
-    if not localBuildArea or not localPlotPart then
-        Rayfield:Notify({Title = "Error", Content = "Could not locate your plot or build area", Duration = 5})
+    local localFolder = localPlayerName .. "BuildArea"
+    local localBuildArea = privateArea:FindFirstChild(localFolder)
+    local localPlot = getPlotPart(localFolder)
+    if not localBuildArea or not localPlot then
+        Rayfield:Notify({Title = "Error", Content = "Your plot missing!", Duration = 5})
         return
     end
 
-    -- Build folders (where parts are stored)
-    local sourceBuildFolder = sourceBuildArea:FindFirstChild("Build")
-    local localBuildFolder = localBuildArea:FindFirstChild("Build")
-    if not sourceBuildFolder or not localBuildFolder then
-        Rayfield:Notify({Title = "Error", Content = "Build folder missing in source or destination", Duration = 5})
+    local sourceBuild = sourceBuildArea:FindFirstChild("Build")
+    local localBuild = localBuildArea:FindFirstChild("Build")
+    if not sourceBuild or not localBuild then
+        Rayfield:Notify({Title = "Error", Content = "Build folders missing!", Duration = 5})
         return
     end
 
-    -- Collect all base parts from source
+    -- Collect parts
     local parts = {}
-    for _, child in ipairs(sourceBuildFolder:GetChildren()) do
-        if child:IsA("BasePart") then
-            table.insert(parts, child)
-        end
+    for _, v in ipairs(sourceBuild:GetChildren()) do
+        if v:IsA("BasePart") then table.insert(parts, v) end
     end
     if #parts == 0 then
         Rayfield:Notify({Title = "Info", Content = "No parts found to copy.", Duration = 5})
@@ -195,20 +196,16 @@ local function copyBuild(playerDisplayName)
 
     local successCount = 0
     for _, part in ipairs(parts) do
-        if copyPart(part, sourcePlotPart, localPlotPart, localBuildFolder) then
+        if copyPart(part, sourcePlot, localPlot, localBuild) then
             successCount = successCount + 1
         end
-        task.wait(0.05)  -- small delay to avoid flooding the server
+        task.wait(0.05)
     end
 
-    Rayfield:Notify({
-        Title = "Complete",
-        Content = "Copied " .. successCount .. "/" .. #parts .. " parts.",
-        Duration = 5
-    })
+    Rayfield:Notify({Title = "Complete", Content = successCount .. "/" .. #parts .. " parts copied.", Duration = 5})
 end
 
--- Refresh the dropdown list
+-- Dropdown refresh
 local function refreshDropdown()
     local options = refreshPlayerList()
     if dropdownObject then
@@ -216,8 +213,6 @@ local function refreshDropdown()
         if options[1] then
             dropdownObject:SetValue(options[1])
             selectedPlayer = options[1]
-        else
-            selectedPlayer = nil
         end
     end
     if #options == 0 then
@@ -225,32 +220,34 @@ local function refreshDropdown()
     end
 end
 
--- Create dropdown
+-- Build UI
 local initialOptions = refreshPlayerList()
 dropdownObject = MainTab:CreateDropdown({
     Name = "Select Player",
     Options = initialOptions,
     CurrentOption = initialOptions[1] or "",
-    Callback = function(option)
-        selectedPlayer = option
-        print("[Build Copier] Selected:", option)
-    end
+    Callback = function(opt) selectedPlayer = opt end
 })
 if initialOptions[1] then selectedPlayer = initialOptions[1] end
 
--- Copy button
 MainTab:CreateButton({
-    Name = "Copy Build",
+    Name = "Clear Your Build",
     Callback = function()
-        if selectedPlayer and selectedPlayer ~= "" then
-            copyBuild(selectedPlayer)
-        else
-            Rayfield:Notify({Title = "Error", Content = "Please select a player first.", Duration = 3})
-        end
+        clearLocalBuild()
     end
 })
 
--- Refresh button
+MainTab:CreateButton({
+    Name = "Copy Build",
+    Callback = function()
+        if not selectedPlayer then
+            Rayfield:Notify({Title = "Error", Content = "Select a player first.", Duration = 3})
+            return
+        end
+        task.spawn(function() copyBuild(selectedPlayer) end)
+    end
+})
+
 MainTab:CreateButton({
     Name = "Refresh Player List",
     Callback = function()
@@ -259,11 +256,5 @@ MainTab:CreateButton({
     end
 })
 
--- Final notification
-Rayfield:Notify({
-    Title = "Build Copier Ready",
-    Content = "Select a player and click 'Copy Build'.",
-    Duration = 5
-})
-
-print("✅ Build Copier loaded – Rayfield menu should appear.")
+Rayfield:Notify({Title = "Build Copier Ready", Content = "Use 'Clear Your Build' before copying to avoid errors.", Duration = 5})
+print("✅ Build Copier loaded – fixed positioning and clearing.")
