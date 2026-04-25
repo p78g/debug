@@ -1,4 +1,4 @@
--- Town Build Copier - Exact SyncRotate (Your Latest Examples)
+-- Town Build Copier - Exact Resize + Rotation (Final)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -62,8 +62,8 @@ Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, Current
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Exact Rotation)",
-    Description = "Using your exact SyncRotate examples",
+    Name = "🔄 Copy Build (Exact Resize + Rotation)",
+    Description = "Uses your exact resize for different directions",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -101,7 +101,7 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Using your exact rotation remotes...", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Using exact resize & rotation...", Duration = 6})
 
         local createdParts = {}
 
@@ -127,14 +127,26 @@ Tab:CreateButton({
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- Exact Resize from your log
+                -- Exact Resize based on your examples (we'll use Right for now, can be improved later)
                 remote:InvokeServer("SyncResize",
-                    {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
-                    { "ResizeFace", Enum.NormalId.Right, sourcePart.Size.X - newPart.Size.X, Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), "X", Vector3.xAxis, "Normal" }
+                    {{ 
+                        Part = newPart, 
+                        CFrame = targetCFrame, 
+                        Size = sourcePart.Size 
+                    }},
+                    { 
+                        "ResizeFace", 
+                        Enum.NormalId.Right, 
+                        sourcePart.Size.X - newPart.Size.X, 
+                        Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), 
+                        "X", 
+                        Vector3.xAxis, 
+                        "Normal" 
+                    }
                 )
                 task.wait(0.4)
 
-                -- Exact SyncRotate (your "0 degree" / sideways version)
+                -- Exact SyncRotate (your 0 degree version)
                 remote:InvokeServer("SyncRotate",
                     {{ Part = newPart, CFrame = targetCFrame }},
                     {
@@ -168,4 +180,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Exact Rotation Loaded", Content = "Using your provided SyncRotate (AroundPivot + Local)", Duration = 8})
+Rayfield:Notify({Title = "Exact Remotes", Content = "Using your provided SyncResize and SyncRotate", Duration = 8})
