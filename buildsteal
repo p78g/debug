@@ -1,9 +1,9 @@
--- Town Build Copier - Side/Corner Based Positioning + Exact Remotes
+-- Town Build Copier - Center + Side Measurement Method
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Corner Scan",
+    Name = "Town Plot Copier - Center + Sides",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -62,8 +62,8 @@ Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, Current
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Corner Scan Method)",
-    Description = "Scans from sides/corners of BuildArea",
+    Name = "🔄 Copy Build (Center + Side Measurement)",
+    Description = "Measures from center and sides of BuildArea",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -78,10 +78,10 @@ Tab:CreateButton({
         end
 
         local sourceBuild = sourceArea:WaitForChild("Build")
-        local sourceBase = sourceArea:FindFirstChildWhichIsA("BasePart") -- the plot base
+        local sourceBase = sourceArea:FindFirstChildWhichIsA("BasePart") -- plot base
 
         if not sourceBase then
-            Rayfield:Notify({Title = "Error", Content = "Could not find source base"}) 
+            Rayfield:Notify({Title = "Error", Content = "Could not find source base part"}) 
             return 
         end
 
@@ -98,18 +98,24 @@ Tab:CreateButton({
             return 
         end
 
-        -- New corner-based positioning
-        local sourceCorner = sourceBase.Position - Vector3.new(sourceBase.Size.X/2, 0, sourceBase.Size.Z/2)
-        local destCorner = localBuildArea.Position - Vector3.new(localBuildArea.Size.X/2, 0, localBuildArea.Size.Z/2) 
-                           + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
+        -- Center + Side measurement
+        local sourceCenter = sourceBase.Position
+        local sourceSize = sourceBase.Size
 
-        Rayfield:Notify({Title = "Copying...", Content = "Using corner scan method...", Duration = 6})
+        local destCenter = localBuildArea.Position
+        local destSize = localBuildArea.Size
+
+        -- Calculate offset from source center to your plot center + user offsets
+        local centerOffset = destCenter - sourceCenter + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
+
+        Rayfield:Notify({Title = "Copying...", Content = "Using center + side measurement", Duration = 6})
 
         local createdParts = {}
 
         for _, sourcePart in ipairs(allParts) do
-            local relativeOffset = sourcePart.Position - sourceCorner
-            local targetPos = destCorner + relativeOffset
+            -- Relative position from source center
+            local relativePos = sourcePart.Position - sourceCenter
+            local targetPos = destCenter + relativePos + centerOffset
 
             local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
 
@@ -125,7 +131,6 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            -- CreatePart
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
@@ -161,4 +166,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Corner Scan Method", Content = "Using side/corner based positioning", Duration = 8})
+Rayfield:Notify({Title = "Center + Side Method", Content = "Using center and sides of BuildArea for positioning", Duration = 8})
