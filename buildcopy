@@ -1,13 +1,32 @@
 -- =============================================
--- FINAL VERIFICATION - Copy One Part (with Debug)
+-- FINAL: Copy One Part – Excludes local player, tests parent
 -- =============================================
+
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-local Window = Rayfield:CreateWindow({Name = "One Part Copy Test"})
+
+local Window = Rayfield:CreateWindow({
+    Name = "Build Copier – Test One Part",
+    Theme = "Default",
+})
+
 local MainTab = Window:CreateTab("Test")
+
+-- Offsets (your measured corrections)
+local xOffset = -28.637
+local zOffset = -17.512
+local baseHeight = 3
+local yExtra = 0
+
+MainTab:CreateSlider({ Name = "X Offset", Range = {-100, 100}, Increment = 0.5, CurrentValue = xOffset, Callback = function(v) xOffset = v end })
+MainTab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.5, CurrentValue = zOffset, Callback = function(v) zOffset = v end })
+MainTab:CreateSlider({ Name = "Base Height", Range = {0, 10}, Increment = 0.5, CurrentValue = baseHeight, Callback = function(v) baseHeight = v end })
+MainTab:CreateSlider({ Name = "Extra Y", Range = {-10, 10}, Increment = 0.5, CurrentValue = yExtra, Callback = function(v) yExtra = v end })
+
+MainTab:CreateSection("Player Selection")
 
 local selectedPlayer = nil
 local playerMapping = {}
-local remote = nil
+local dropdown = nil
 
 local function getBuildArea(folderName)
     local pa = workspace:FindFirstChild("Private Building Areas")
@@ -19,17 +38,44 @@ local function refreshPlayers()
     if not pa then return {} end
     local opts = {}
     playerMapping = {}
+    local localPlayerName = game.Players.LocalPlayer.Name
     for _, c in ipairs(pa:GetChildren()) do
         local name = c.Name
         if name:sub(-9) == "BuildArea" then
             local pn = name:sub(1, -10)
-            table.insert(opts, pn)
-            playerMapping[pn] = name
+            -- Exclude local player
+            if pn ~= localPlayerName then
+                table.insert(opts, pn)
+                playerMapping[pn] = name
+            end
         end
     end
     return opts
 end
 
+-- Compute centre of all parts in source build (auto)
+local function computeCentre(buildArea)
+    local buildFolder = buildArea:FindFirstChild("Build")
+    if not buildFolder then return buildArea.Position end
+    local parts = {}
+    local function collect(obj)
+        for _, child in ipairs(obj:GetChildren()) do
+            if child:IsA("BasePart") then
+                table.insert(parts, child)
+            elseif child:IsA("Model") then
+                collect(child)
+            end
+        end
+    end
+    collect(buildFolder)
+    if #parts == 0 then return buildArea.Position end
+    local sum = Vector3.new(0,0,0)
+    for _, p in ipairs(parts) do sum = sum + p.Position end
+    return sum / #parts
+end
+
+-- Remote access
+local remote = nil
 local function getRemote()
     if remote then return remote end
     local char = game.Players.LocalPlayer.Character
@@ -42,26 +88,31 @@ local function getRemote()
     return remote
 end
 
-local function testOneClick()
+local function vec(v) return vector.create(v.X, v.Y, v.Z) end
+
+-- Test copy one part
+local function testOnePart()
     if not selectedPlayer then
-        Rayfield:Notify({Title = "Error", Content = "Select a player first"})
+        Rayfield:Notify({Title="Error", Content="Select a player first."})
         return
     end
 
     local srcFolder = playerMapping[selectedPlayer]
     local srcBA = getBuildArea(srcFolder)
-    if not srcBA then
-        Rayfield:Notify({Title = "Error", Content = "Source BuildArea not found."})
+    local dstBA = getBuildArea(game.Players.LocalPlayer.Name .. "BuildArea")
+    if not srcBA or not dstBA then
+        Rayfield:Notify({Title="Error", Content="BuildAreas missing."})
         return
     end
 
     local srcBuild = srcBA:FindFirstChild("Build")
-    if not srcBuild then
-        Rayfield:Notify({Title = "Error", Content = "Source Build Folder not found."})
+    local dstBuild = dstBA:FindFirstChild("Build")
+    if not srcBuild or not dstBuild then
+        Rayfield:Notify({Title="Error", Content="Build folders missing."})
         return
     end
 
-    -- Find first part (any BasePart)
+    -- Find first part in source (any BasePart)
     local sourcePart = nil
     local function findFirstPart(obj)
         for _, child in ipairs(obj:GetChildren()) do
@@ -74,107 +125,133 @@ local function testOneClick()
         end
         return false
     end
-    findFirstPart(srcBuild)
-
-    if not sourcePart then
-        Rayfield:Notify({Title = "Error", Content = "No parts found in source build."})
+    if not findFirstPart(srcBuild) then
+        Rayfield:Notify({Title="Error", Content="No parts found in source."})
         return
     end
 
-    -- Get your plot reference
-    local dstBA = getBuildArea(game.Players.LocalPlayer.Name .. "BuildArea")
-    if not dstBA then
-        Rayfield:Notify({Title = "Error", Content = "Your BuildArea not found."})
-        return
-    end
-
-    local dstBuild = dstBA:FindFirstChild("Build")
-    if not dstBuild then
-        Rayfield:Notify({Title = "Error", Content = "Your Build Folder not found."})
-        return
-    end
-
-    -- Clear your plot
-    for _, p in ipairs(dstBuild:GetChildren()) do
-        p:Destroy()
-    end
-
-    -- Get remote
-    local remoteEndpoint = getRemote()
-    if not remoteEndpoint then
-        Rayfield:Notify({Title = "Error", Content = "ServerEndpoint not found."})
-        return
-    end
-
-    -- Calculate offsets (using your previous numbers)
-    local xCorrection = -28.637
-    local zCorrection = -17.512
-    local baseHeight = 3  -- building surface is 3 studs above plot floor
-
-    -- Determine source centre automatically
-    local srcCentre = srcBA.Position
-    local srcOrigin = srcCentre + Vector3.new(0, baseHeight, 0)
-    local dstOrigin = dstBA.Position + Vector3.new(xCorrection, baseHeight, zCorrection)
+    -- Compute origins
+    local srcCentre = computeCentre(srcBA)
+    local finalY = baseHeight + yExtra
+    local srcOrigin = srcCentre + Vector3.new(0, finalY, 0)
+    local dstOrigin = dstBA.Position + Vector3.new(xOffset, finalY, zOffset)
 
     local offset = sourcePart.Position - srcOrigin
     local targetPos = dstOrigin + offset
-    local targetCF = CFrame.new(targetPos) * (sourcePart.CFrame - sourcePart.CFrame.Position)
+    local targetCFrame = CFrame.new(targetPos) * (sourcePart.CFrame - sourcePart.CFrame.Position)
 
-    local partType = "Normal" -- part type mapping
-
-    -- Prepare the remote call arguments (as seen in your original working example)
-    local argsCreate = {
-        "CreatePart",
-        partType,
-        CFrame.new(dstOrigin),
-        dstBuild
+    -- Part type
+    local typeMap = {
+        Part = "Normal", Truss = "Truss", Wedge = "Wedge", Corner = "Corner",
+        Cylinder = "Cylinder", Ball = "Ball", Seat = "Seat",
+        ["Vehicle Seat"] = "Vehicle Seat", Spawn = "Spawn"
     }
+    local partType = typeMap[sourcePart.Name] or "Normal"
 
-    print("=== ATTEMPTING CREATE PART ===")
-    local ok, result = pcall(function() 
-        return remoteEndpoint:InvokeServer(unpack(argsCreate)) 
-    end)
+    print("=== TEST ONE PART ===")
+    print("Source part:", sourcePart.Name, sourcePart.Position)
+    print("Source centre:", srcCentre)
+    print("Source origin:", srcOrigin)
+    print("Offset:", offset)
+    print("Destination origin:", dstOrigin)
+    print("Target position:", targetPos)
+    print("Part type:", partType)
 
-    if not ok then
-        warn("CreatePart FAILED:", result)
-        Rayfield:Notify({Title = "CreatePart Failed", Content = "Check console for details."})
+    local r = getRemote()
+    if not r then
+        Rayfield:Notify({Title="Error", Content="Remote endpoint not found."})
         return
     end
 
-    print("CreatePart SUCCESS:", result)
-    local newPart = result
-    if not newPart:IsA("BasePart") then
-        newPart = dstBuild:FindFirstChild(sourcePart.Name)
+    -- Clear local build
+    for _, p in ipairs(dstBuild:GetChildren()) do p:Destroy() end
+    task.wait(0.5)
+
+    -- Try CreatePart with different parent (Build folder vs BuildArea)
+    local parentsToTry = {
+        { name = "Build folder", obj = dstBuild },
+        { name = "BuildArea model", obj = dstBA }
+    }
+    local successParent = nil
+    local newPart = nil
+
+    for _, parentTry in ipairs(parentsToTry) do
+        print("Trying parent:", parentTry.name)
+        local createArgs = {"CreatePart", partType, CFrame.new(dstOrigin), parentTry.obj}
+        local ok, result = pcall(function() return r:InvokeServer(unpack(createArgs)) end)
+        if ok and result and result:IsA("BasePart") then
+            successParent = parentTry.name
+            newPart = result
+            print("Success with parent:", successParent)
+            break
+        else
+            print("Failed with parent:", parentTry.name, ok, result)
+        end
+        task.wait(0.5)
     end
 
-    -- SyncRotate
-    local pivot = targetCF - targetCF.Position
-    local rotArgs = {"SyncRotate", {{Part = newPart, CFrame = targetCF}}, {"AroundPivot", pivot, "Center", CFrame.new(dstOrigin), "Center"}}
-    pcall(function() remoteEndpoint:InvokeServer(unpack(rotArgs)) end)
-    print("Rotate attempted")
+    if not newPart then
+        Rayfield:Notify({Title="CreatePart Failed", Content="Tried both parent types. Check console."})
+        return
+    end
 
-    -- SyncMove
+    -- Locate actual part
+    local actualPart = newPart
+    if not actualPart:IsA("BasePart") then
+        actualPart = dstBuild:FindFirstChild(sourcePart.Name)
+    end
+    if not actualPart then
+        Rayfield:Notify({Title="Error", Content="Could not locate created part."})
+        return
+    end
+
+    -- Rotate
+    local pivotCFrame = targetCFrame - targetCFrame.Position
+    local currentCFrame = CFrame.new(dstOrigin)
+    local rotArgs = {
+        "SyncRotate",
+        { { Part = actualPart, CFrame = targetCFrame } },
+        { "AroundPivot", pivotCFrame, "Center", currentCFrame, "Center" }
+    }
+    pcall(function() r:InvokeServer(unpack(rotArgs)) end)
+    task.wait(0.5)
+
+    -- Move
     local delta = targetPos - dstOrigin
-    local moveArgs = {"SyncMove", {{Part = newPart, CFrame = CFrame.new(targetPos)}}, {"AlongFace", delta, "Global", CFrame.new(targetPos)}}
-    pcall(function() remoteEndpoint:InvokeServer(unpack(moveArgs)) end)
-    print("Move attempted")
+    local moveArgs = {
+        "SyncMove",
+        { { Part = actualPart, CFrame = CFrame.new(targetPos) } },
+        { "AlongFace", vec(delta), "Global", CFrame.new(targetPos) }
+    }
+    pcall(function() r:InvokeServer(unpack(moveArgs)) end)
+    task.wait(0.5)
 
-    -- SyncResize
-    local resizeArgs = {"SyncResize", {{Part = newPart, CFrame = CFrame.new(targetPos), Size = sourcePart.Size}}, {"ResizeFace", Enum.NormalId.Front, 0, Vector3.zero, "Z", sourcePart.Size, "Normal"}}
-    pcall(function() remoteEndpoint:InvokeServer(unpack(resizeArgs)) end)
-    print("Resize attempted")
+    -- Resize
+    local resizeArgs = {
+        "SyncResize",
+        { { Part = actualPart, CFrame = CFrame.new(targetPos), Size = vec(sourcePart.Size) } },
+        { "ResizeFace", Enum.NormalId.Front, 1, vec(Vector3.new(0,0,0)), "Z", sourcePart.Size, "Normal" }
+    }
+    pcall(function() r:InvokeServer(unpack(resizeArgs)) end)
 
-    Rayfield:Notify({ Title = "Test Complete", Content = "Part created. Check its position/rotation/size." })
+    Rayfield:Notify({Title="Success", Content="Part created and transformed. Check your plot."})
 end
 
--- Build UI
+-- UI
 local initOpts = refreshPlayers()
-local dropdown = MainTab:CreateDropdown({
-    Name = "Select Player",
+dropdown = MainTab:CreateDropdown({
+    Name = "Select Player (excludes you)",
     Options = initOpts,
     CurrentOption = initOpts[1] or "",
     Callback = function(opt) selectedPlayer = opt end
 })
-MainTab:CreateButton({ Name = "Test One Part", Callback = testOneClick })
+if initOpts[1] then selectedPlayer = initOpts[1] end
 
-Rayfield:Notify({ Title = "Ready", Content = "Select a player, then click 'Test One Part'." })
+MainTab:CreateButton({ Name = "Test One Part", Callback = testOnePart })
+MainTab:CreateButton({ Name = "Refresh Players", Callback = function()
+    local newOpts = refreshPlayers()
+    dropdown:SetOptions(newOpts)
+    if newOpts[1] then dropdown:SetValue(newOpts[1]); selectedPlayer = newOpts[1] end
+end })
+
+Rayfield:Notify({Title="Ready", Content="Local player excluded. Offsets default to your measured values. Click Test."})
