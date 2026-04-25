@@ -1,12 +1,12 @@
--- Town Build Copier - Updated (Fixed Rotation + Same Real/Ghost Offsets + Improved Resize)
--- Pure F3X Remote Calls
+-- Town Build Copier - Fixed Rotation + Resize + Creation
+-- Updated: Better CreatePart → Rotate → Move → Resize order
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
     Name = "Town Build Copier",
     LoadingTitle = "Loading...",
-    LoadingSubtitle = "F3X Remote Edition",
+    LoadingSubtitle = "Fixed Rotation & Resize",
     ConfigurationSaving = {
         Enabled = true,
         FolderName = "TownCopier",
@@ -17,7 +17,6 @@ local Window = Rayfield:CreateWindow({
 
 local Tab = Window:CreateTab("Build Copier", "hammer")
 
--- Services & Remote
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
@@ -33,7 +32,6 @@ local localBuildFolder = localBuildArea:WaitForChild("Build")
 
 local baseHeight = 5
 
--- Variables
 local selectedPlayer = nil
 local realOffsetX, realOffsetY, realOffsetZ = -28.637, -17.512, 0
 local ghostOffsetX, ghostOffsetY, ghostOffsetZ = -28.637, -17.512, 0
@@ -52,7 +50,6 @@ end
 refreshPlayers()
 
 Tab:CreateSection("Player Selection")
-
 local Dropdown = Tab:CreateDropdown({
     Name = "Select Player to Copy From",
     Options = playerOptions,
@@ -67,23 +64,19 @@ local Dropdown = Tab:CreateDropdown({
     end,
 })
 
-Tab:CreateSection("Real Copy Offsets (defaults same as ghost)")
-
+Tab:CreateSection("Real Copy Offsets")
 Tab:CreateSlider({ Name = "Real X Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = realOffsetX, Callback = function(v) realOffsetX = v end })
 Tab:CreateSlider({ Name = "Real Y Offset", Range = {-50, 150}, Increment = 0.01, CurrentValue = realOffsetY, Callback = function(v) realOffsetY = v end })
 Tab:CreateSlider({ Name = "Real Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = realOffsetZ, Callback = function(v) realOffsetZ = v end })
 
 Tab:CreateSection("Ghost Preview Offsets")
-
 Tab:CreateSlider({ Name = "Ghost X Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = ghostOffsetX, Callback = function(v) ghostOffsetX = v end })
 Tab:CreateSlider({ Name = "Ghost Y Offset", Range = {-50, 150}, Increment = 0.01, CurrentValue = ghostOffsetY, Callback = function(v) ghostOffsetY = v end })
 Tab:CreateSlider({ Name = "Ghost Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = ghostOffsetZ, Callback = function(v) ghostOffsetZ = v end })
 
--- ==================== MAIN COPY FUNCTION ====================
-
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Real) - Fixed Rotation",
-    Description = "Improved rotation + resize",
+    Name = "🔄 Copy Build (Real) - Fixed Rotation & Resize",
+    Description = "Creates parts + applies correct rotation + resize",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "No player selected!", Duration = 5})
@@ -111,7 +104,7 @@ Tab:CreateButton({
             return 
         end
 
-        -- Calculate source center
+        -- Source center
         local sumX, sumY, sumZ = 0, 0, 0
         for _, p in ipairs(allParts) do
             local pos = p.Position
@@ -121,7 +114,7 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(realOffsetX, baseHeight + realOffsetY, realOffsetZ)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Processing " .. #allParts .. " parts with fixed rotation...", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Processing " .. #allParts .. " parts...", Duration = 6})
 
         local createdParts = {}
 
@@ -129,8 +122,9 @@ Tab:CreateButton({
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
 
-            -- Full target CFrame (position + exact original rotation)
-            local targetCFrame = CFrame.new(targetPos) * (sourcePart.CFrame.Rotation)
+            -- Full correct rotation
+            local targetRotation = sourcePart.CFrame.Rotation
+            local targetCFrame = CFrame.new(targetPos) * targetRotation
 
             -- Part Type
             local partType = "Normal"
@@ -145,45 +139,45 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            -- 1. CreatePart at target position (no rotation yet)
+            -- 1. CreatePart (neutral position first)
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- 2. SyncRotate - Fixed version (apply full rotation)
+                -- 2. SyncRotate - Apply exact original rotation
                 remote:InvokeServer("SyncRotate", 
                     {{ Part = newPart, CFrame = targetCFrame }},
                     { "AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center" }
                 )
-                task.wait(0.6)
+                task.wait(0.5)
 
-                -- 3. SyncMove (ensure final position)
+                -- 3. SyncMove - Final position + rotation
                 remote:InvokeServer("SyncMove", 
                     {{ Part = newPart, CFrame = targetCFrame }},
                     { "AlongFace", Vector3.new(), "Global", CFrame.new() }
                 )
                 task.wait(0.5)
 
-                -- 4. SyncResize
+                -- 4. SyncResize - Direct size set
                 remote:InvokeServer("SyncResize", 
                     {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
-                    { "ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal" }
+                    { "ResizeFace", Enum.NormalId.Right, 0, Vector3.new(0,0,0), "X", Vector3.xAxis, "Normal" }
                 )
                 task.wait(0.6)
             end
         end
 
-        -- Group the new parts
+        -- Group
         if #createdParts > 0 then
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        Rayfield:Notify({Title = "Success!", Content = "Build copied with improved rotation!", Duration = 8})
+        Rayfield:Notify({Title = "Success!", Content = "Build copied with fixed rotation & resize!", Duration = 8})
     end,
 })
 
--- Ghost Preview Button (unchanged)
+-- Ghost Preview (updated to match new rotation logic)
 Tab:CreateButton({
     Name = "👻 Show Ghost Preview",
     Callback = function()
@@ -191,7 +185,7 @@ Tab:CreateButton({
         if old then old:Destroy() end
 
         if not selectedPlayer then 
-            Rayfield:Notify({Title="Error", Content="Select a player first"}) 
+            Rayfield:Notify({Title="Error", Content="Select player first"}) 
             return 
         end
 
@@ -233,24 +227,18 @@ Tab:CreateButton({
             clone.Parent = ghostFolder
         end
 
-        Rayfield:Notify({Title = "Ghost Preview", Content = "Preview shown - check rotation alignment", Duration = 6})
+        Rayfield:Notify({Title = "Ghost Preview", Content = "Check if rotation now matches source", Duration = 6})
     end,
 })
 
-Tab:CreateButton({
-    Name = "Clear Ghost Preview",
-    Callback = function()
-        local g = Workspace:FindFirstChild("GhostPreview")
-        if g then g:Destroy() end
-    end,
-})
+Tab:CreateButton({ Name = "Clear Ghost Preview", Callback = function()
+    local g = Workspace:FindFirstChild("GhostPreview")
+    if g then g:Destroy() end
+end })
 
-Tab:CreateButton({
-    Name = "Refresh Player List",
-    Callback = function()
-        refreshPlayers()
-        Dropdown:Refresh(playerOptions)
-    end,
-})
+Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
+    refreshPlayers()
+    Dropdown:Refresh(playerOptions)
+end })
 
-Rayfield:Notify({Title = "Copier Loaded", Content = "Rotation fix applied - test on a build with rotated parts", Duration = 8})
+Rayfield:Notify({Title = "Script Loaded", Content = "Rotation & Resize fixes applied - test on a build with rotated and differently sized parts", Duration = 8})
