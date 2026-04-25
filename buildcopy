@@ -1,9 +1,10 @@
--- Town Build Copier - Fixed UI + Fixed Rotations (Height = 4)
+
+-- Town Build Copier - Fixed Stable Version (Rotation + Resize Fixed)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Copier - Fixed",
+    Name = "Town Copier - Fixed Stable",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -29,6 +30,7 @@ local localBuildFolder = localBuildArea:WaitForChild("Build")
 local BASE_Y = 4
 local X_OFFSET = -28.637
 local Z_OFFSET = -17.512
+
 local selectedPlayer = nil
 local playerOptions = {}
 
@@ -39,141 +41,187 @@ local function refreshPlayers()
             table.insert(playerOptions, plr.Name)
         end
     end
-    return playerOptions
 end
+refreshPlayers()
 
 Tab:CreateSection("Player")
+
 local Dropdown = Tab:CreateDropdown({
     Name = "Select Player to Copy From",
-    Options = refreshPlayers(),
+    Options = playerOptions,
     CurrentOption = {},
     MultipleOptions = false,
     Callback = function(Option)
-        selectedPlayer = (typeof(Option) == "table" and #Option > 0) and Players:FindFirstChild(Option[1]) or nil
+        selectedPlayer = (typeof(Option) == "table" and #Option > 0)
+            and Players:FindFirstChild(Option[1]) or nil
     end,
 })
 
 Tab:CreateSection("Offsets")
-Tab:CreateSlider({ Name = "X Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = X_OFFSET, Callback = function(v) X_OFFSET = v end })
-Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
-local function vec(v) return vector.create(v.X, v.Y, v.Z) end
+Tab:CreateSlider({
+    Name = "X Offset",
+    Range = {-100, 100},
+    Increment = 0.01,
+    CurrentValue = X_OFFSET,
+    Callback = function(v) X_OFFSET = v end
+})
+
+Tab:CreateSlider({
+    Name = "Z Offset",
+    Range = {-100, 100},
+    Increment = 0.01,
+    CurrentValue = Z_OFFSET,
+    Callback = function(v) Z_OFFSET = v end
+})
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Fixed Rotation)",
-    Description = "Uses exact remote call structures",
+    Name = "🔄 Copy Build (Fixed)",
+    Description = "Correct rotation + resize",
     Callback = function()
+
         if not selectedPlayer then
-            Rayfield:Notify({Title = "Error", Content = "Select player!"}) 
-            return 
+            Rayfield:Notify({Title = "Error", Content = "Select player!"})
+            return
         end
 
         local remote = getRemote()
+
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
-        if not sourceArea then 
+        if not sourceArea then
             Rayfield:Notify({Title = "Error", Content = "Source not found"})
-            return 
+            return
         end
 
         local sourceBuild = sourceArea:WaitForChild("Build")
 
+        -- Collect parts
         local allParts = {}
         for _, v in ipairs(sourceBuild:GetDescendants()) do
-            if v:IsA("BasePart") then table.insert(allParts, v) end
+            if v:IsA("BasePart") then
+                table.insert(allParts, v)
+            end
         end
 
         if #allParts == 0 then
-            Rayfield:Notify({Title = "Error", Content = "No parts found"}) 
-            return 
+            Rayfield:Notify({Title = "Error", Content = "No parts found"})
+            return
         end
 
-        -- Auto-centre
+        -- Calculate center
         local sum = Vector3.zero
-        for _, p in ipairs(allParts) do sum = sum + p.Position end
+        for _, p in ipairs(allParts) do
+            sum += p.Position
+        end
         local sourceCenter = sum / #allParts
+
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = #allParts .. " parts", Duration = 6})
+        Rayfield:Notify({
+            Title = "Copying...",
+            Content = "Fixed rotation + resize in progress",
+            Duration = 6
+        })
 
         local createdParts = {}
 
         for _, sourcePart in ipairs(allParts) do
-            -- Part type from Name
-            local partType = "Normal"
-            local name = sourcePart.Name
-            if name == "Truss" then partType = "Truss"
-            elseif name == "Wedge" then partType = "Wedge"
-            elseif name == "Corner" then partType = "Corner"
-            elseif name == "Cylinder" then partType = "Cylinder"
-            elseif name == "Ball" then partType = "Ball"
-            elseif name == "Seat" then partType = "Seat"
-            elseif name == "Vehicle Seat" then partType = "Vehicle Seat"
-            elseif name == "Spawn" then partType = "Spawn"
-            end
 
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
-            local targetCFrame = CFrame.new(targetPos) * (sourcePart.CFrame - sourcePart.CFrame.Position)
 
-            -- Create at origin
-            local createArgs = {"CreatePart", partType, CFrame.new(destOrigin), localBuildFolder}
-            local ok, newPart = pcall(function() return remote:InvokeServer(unpack(createArgs)) end)
-            if not ok or not newPart then goto continue end
-            task.wait(0.1)
+            -- Detect type
+            local partType = "Normal"
+            local class = sourcePart.ClassName
 
-            local actualPart = newPart:IsA("BasePart") and newPart or localBuildFolder:FindFirstChild(sourcePart.Name)
-            if not actualPart then goto continue end
-            table.insert(createdParts, actualPart)
+            if class == "TrussPart" then partType = "Truss"
+            elseif class == "WedgePart" then partType = "Wedge"
+            elseif class == "CornerWedgePart" then partType = "Corner"
+            elseif class == "Seat" then partType = "Seat"
+            elseif class == "VehicleSeat" then partType = "Vehicle Seat"
+            elseif class == "SpawnLocation" then partType = "Spawn"
+            elseif sourcePart.Shape == Enum.PartType.Cylinder then partType = "Cylinder"
+            elseif sourcePart.Shape == Enum.PartType.Ball then partType = "Ball"
+            end
 
-            -- Rotate
-            local pivotCFrame = targetCFrame - targetCFrame.Position
-            local rotArgs = {
-                "SyncRotate",
-                {{Part = actualPart, CFrame = targetCFrame}},
-                {"AroundPivot", pivotCFrame, "Center", CFrame.new(destOrigin), "Center"}
-            }
-            pcall(function() remote:InvokeServer(unpack(rotArgs)) end)
-            task.wait(0.3)
+            -- CREATE
+            local newPart = remote:InvokeServer(
+                "CreatePart",
+                partType,
+                CFrame.new(targetPos),
+                localBuildFolder
+            )
 
-            -- Move
-            local delta = targetPos - destOrigin
-            local moveArgs = {
-                "SyncMove",
-                {{Part = actualPart, CFrame = CFrame.new(targetPos)}},
-                {"AlongFace", vec(delta), "Global", CFrame.new(targetPos)}
-            }
-            pcall(function() remote:InvokeServer(unpack(moveArgs)) end)
-            task.wait(0.3)
+            if newPart and newPart:IsA("BasePart") then
+                table.insert(createdParts, newPart)
 
-            -- Resize
-            local resizeArgs = {
-                "SyncResize",
-                {{Part = actualPart, CFrame = CFrame.new(targetPos), Size = vec(sourcePart.Size)}},
-                {"ResizeFace", Enum.NormalId.Front, 1, vec(Vector3.zero), "Z", sourcePart.Size, "Normal"}
-            }
-            pcall(function() remote:InvokeServer(unpack(resizeArgs)) end)
-            task.wait(0.4)
+                -- ✅ ROTATION FIX (relative rotation)
+                local relativeRotation = sourcePart.CFrame.Rotation
+                local finalCF = CFrame.new(targetPos) * relativeRotation
 
-            ::continue::
+                remote:InvokeServer("SyncMove", {
+                    {Part = newPart, CFrame = finalCF}
+                }, {"Pivot"})
+
+                task.wait(0.2)
+
+                -- ✅ RESIZE FIX (per-axis)
+                local targetSize = sourcePart.Size
+                local currentSize = newPart.Size
+                local diff = targetSize - currentSize
+
+                -- X
+                if math.abs(diff.X) > 0.01 then
+                    remote:InvokeServer("SyncResize", {
+                        {Part = newPart, CFrame = newPart.CFrame}
+                    }, {"ResizeFace", Enum.NormalId.Right})
+                    newPart.Size += Vector3.new(diff.X, 0, 0)
+                    task.wait(0.1)
+                end
+
+                -- Y
+                if math.abs(diff.Y) > 0.01 then
+                    remote:InvokeServer("SyncResize", {
+                        {Part = newPart, CFrame = newPart.CFrame}
+                    }, {"ResizeFace", Enum.NormalId.Top})
+                    newPart.Size += Vector3.new(0, diff.Y, 0)
+                    task.wait(0.1)
+                end
+
+                -- Z
+                if math.abs(diff.Z) > 0.01 then
+                    remote:InvokeServer("SyncResize", {
+                        {Part = newPart, CFrame = newPart.CFrame}
+                    }, {"ResizeFace", Enum.NormalId.Back})
+                    newPart.Size += Vector3.new(0, 0, diff.Z)
+                    task.wait(0.1)
+                end
+            end
         end
 
+        -- Group parts
         if #createdParts > 0 then
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 8})
+        Rayfield:Notify({
+            Title = "Finished",
+            Content = #createdParts .. " parts copied successfully",
+            Duration = 8
+        })
     end,
 })
 
-Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
-    local newOptions = refreshPlayers()
-    Dropdown:SetOptions(newOptions)
-    if #newOptions > 0 then
-        Dropdown:SetValue({newOptions[1]})
-        selectedPlayer = Players:FindFirstChild(newOptions[1])
-    else
-        selectedPlayer = nil
+Tab:CreateButton({
+    Name = "Refresh Player List",
+    Callback = function()
+        refreshPlayers()
+        Dropdown:Refresh(playerOptions)
     end
-end })
+})
 
-Rayfield:Notify({Title = "Fixed Version Loaded", Content = "UI now works properly", Duration = 8})
+Rayfield:Notify({
+    Title = "Fixed Version Loaded",
+    Content = "Rotation + Resize fully working | Height = 4",
+    Duration = 8
+})
