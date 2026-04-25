@@ -1,58 +1,57 @@
 -- Load Rayfield
 local Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"))()
 
--- Fetch the original silent aim script
-local originalScript = game:HttpGet("https://rawscripts.net/raw/Street-Life-Remastered-OPEN-SOURCE-Silent-Aim-204997")
-
--- Create a new function that will override the original script's settings
-local settings = {
-    enabled = true,
-    fov = 200,       -- default from original script (seen in their code)
-    targetPart = "Head"
-}
-
--- Modify the original script's source code to use our settings
--- We'll inject global variables that the original script reads
-local modifiedScript = [[
--- Original silent aim script modified to use _G settings
-_G.SilentAim = {
-    Enabled = true,
-    FOV = 200,
-    TargetPart = "Head"
-}
-
--- Insert the original code here, but replace its internal variables with _G.SilentAim
-]] .. originalScript
-
--- But we need to actually edit the original code's logic. Since we can't see it, we'll assume it uses _G or has variables.
--- Safer: Execute the original script in a sandbox, then override its functions.
-
--- Execute original script
-local func, err = loadstring(originalScript)
-if not func then
-    error("Failed to load original script: " .. tostring(err))
-end
-func()
-
--- Now override the original script's getClosestTarget or projectile hook to use our settings.
--- We'll find the module they hooked and re-hook it with our settings.
-
 -- Services
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- Our own silent aim logic (based on original but with settings)
+-- Settings (controlled by Rayfield)
+local Settings = {
+    Enabled = true,
+    FOV = 200,
+    TargetPart = "Head",
+}
+
+-- ========== VISUAL FOV CIRCLE ==========
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "SilentAimFOV"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = game:GetService("CoreGui")
+
+local circle = Instance.new("Frame")
+circle.BackgroundTransparency = 1
+circle.BorderSizePixel = 0
+circle.AnchorPoint = Vector2.new(0.5, 0.5)
+circle.Size = UDim2.fromOffset(Settings.FOV * 2, Settings.FOV * 2)
+circle.Parent = screenGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(1, 0)
+corner.Parent = circle
+
+local stroke = Instance.new("UIStroke")
+stroke.Thickness = 2
+stroke.Transparency = 0.4
+stroke.Color = Color3.fromRGB(255, 255, 255) -- white default
+stroke.Parent = circle
+
+local function updateFOVSize()
+    circle.Size = UDim2.fromOffset(Settings.FOV * 2, Settings.FOV * 2)
+end
+
+-- ========== SILENT AIM LOGIC (same as raw script) ==========
 local function getClosestTarget()
-    if not settings.enabled then return nil end
+    if not Settings.Enabled then return nil end
     local mousePos = UserInputService:GetMouseLocation()
-    local bestDist = settings.fov
+    local bestDist = Settings.FOV
     local bestTarget = nil
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character then
-            local targetPart = player.Character:FindFirstChild(settings.targetPart)
+            local targetPart = player.Character:FindFirstChild(Settings.TargetPart)
             local humanoid = player.Character:FindFirstChildWhichIsA("Humanoid")
             if targetPart and humanoid and humanoid.Health > 0 then
                 local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
@@ -69,26 +68,26 @@ local function getClosestTarget()
     return bestTarget
 end
 
--- Re-hook the projectile module (original script likely did this, we override)
+-- Hook projectile system (same as original script)
 local function hookProjectiles()
     local replicatedStorage = game:GetService("ReplicatedStorage")
-    local module = replicatedStorage:FindFirstChild("Modules")
-    if module then module = module:FindFirstChild("GunFramework") end
-    if module then module = module:FindFirstChild("Modules") end
-    if not module then 
-        warn("Projectile module not found")
-        return false
+    local modulePath = replicatedStorage:FindFirstChild("Modules")
+    if modulePath then modulePath = modulePath:FindFirstChild("GunFramework") end
+    if modulePath then modulePath = modulePath:FindFirstChild("Modules") end
+    if not modulePath then
+        warn("[FOV Circle] Projectile module not found. Aimbot may not work.")
+        return
     end
     
-    local success, Projectile = pcall(require, module.Projectile)
-    if not success or not Projectile then 
-        warn("Failed to require Projectile")
-        return false
+    local success, Projectile = pcall(require, modulePath.Projectile)
+    if not success or not Projectile then
+        warn("[FOV Circle] Failed to require Projectile.")
+        return
     end
     
     local originalNew = Projectile.new
     Projectile.new = function(params)
-        if params and params.Origin and params.Direction and settings.enabled then
+        if params and params.Origin and params.Direction and Settings.Enabled then
             local target = getClosestTarget()
             if target then
                 params.Direction = (target.Position - params.Origin).Unit
@@ -96,17 +95,27 @@ local function hookProjectiles()
         end
         return originalNew(params)
     end
-    print("Silent aim re-hooked with Rayfield settings")
-    return true
+    print("[FOV Circle] Silent aim hooked.")
 end
-
--- Try to hook (if original already hooked, this overrides)
 hookProjectiles()
 
--- Create Rayfield menu
+-- Update circle position and color each frame
+RunService.RenderStepped:Connect(function()
+    local mousePos = UserInputService:GetMouseLocation()
+    circle.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
+    
+    local target = getClosestTarget()
+    if target and Settings.Enabled then
+        stroke.Color = Color3.fromRGB(255, 50, 50)  -- Red when target inside
+    else
+        stroke.Color = Color3.fromRGB(255, 255, 255) -- White when no target
+    end
+end)
+
+-- ========== RAYFIELD MENU ==========
 local Window = Rayfield:CreateWindow({
-    Name = "Silent Aim Control",
-    LoadingTitle = "Street Life Aimbot",
+    Name = "Silent Aim + FOV Circle",
+    LoadingTitle = "Aimbot",
     Theme = "Default",
 })
 
@@ -114,10 +123,9 @@ local MainTab = Window:CreateTab("Aimbot")
 
 MainTab:CreateToggle({
     Name = "Enable Silent Aim",
-    CurrentValue = settings.enabled,
+    CurrentValue = Settings.Enabled,
     Callback = function(v)
-        settings.enabled = v
-        print("Silent aim enabled:", v)
+        Settings.Enabled = v
     end,
 })
 
@@ -126,26 +134,20 @@ MainTab:CreateSlider({
     Range = {50, 400},
     Increment = 1,
     Suffix = "px",
-    CurrentValue = settings.fov,
+    CurrentValue = Settings.FOV,
     Callback = function(v)
-        settings.fov = v
-        print("FOV set to:", v)
+        Settings.FOV = v
+        updateFOVSize()
     end,
 })
 
 MainTab:CreateDropdown({
     Name = "Target Body Part",
     Options = {"Head", "UpperTorso", "LowerTorso", "HumanoidRootPart"},
-    CurrentOption = settings.targetPart,
+    CurrentOption = Settings.TargetPart,
     Callback = function(v)
-        settings.targetPart = v
-        print("Target part changed to:", v)
+        Settings.TargetPart = v
     end,
 })
 
-MainTab:CreateParagraph({
-    Name = "Info",
-    Content = "Controls the original silent aim script. Changes apply instantly."
-})
-
-print("Rayfield menu loaded. Original silent aim script is now controlled by this menu.")
+print("Rayfield menu + FOV circle loaded. Circle follows mouse, red = target inside.")
