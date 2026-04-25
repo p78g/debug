@@ -1,13 +1,11 @@
--- =============================================
--- TOWN BUILD COPIER – FIXED ROTATE, MOVE, RESIZE
--- Uses exact remote call structures
--- =============================================
+-- Town Build Copier - Fixed Rotations (Height = 4)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Copier – Fixed",
-    Theme = "Default",
+    Name = "Town Copier - Fixed Rotations",
+    LoadingTitle = "Loading...",
+    Theme = "Default"
 })
 
 local Tab = Window:CreateTab("Copier", "hammer")
@@ -16,7 +14,7 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
-local BUILDING_AREAS = workspace:WaitForChild("Private Building Areas")
+local BUILDING_AREAS = Workspace:WaitForChild("Private Building Areas")
 
 local function getRemote()
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -31,6 +29,7 @@ local localBuildFolder = localBuildArea:WaitForChild("Build")
 local BASE_Y = 4
 local X_OFFSET = -28.637
 local Z_OFFSET = -17.512
+
 local selectedPlayer = nil
 local playerOptions = {}
 
@@ -63,8 +62,8 @@ Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, Cur
 local function vec(v) return vector.create(v.X, v.Y, v.Z) end
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Fixed Remote Calls)",
-    Description = "Full rotation, position, size exact",
+    Name = "🔄 Copy Build (Fixed Rotation)",
+    Description = "Uses exact remote call structures from raw logs",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player!"}) 
@@ -88,7 +87,7 @@ Tab:CreateButton({
             return 
         end
 
-        -- Auto‑centre (average of source part positions)
+        -- Auto-centre (average of source part positions)
         local sum = Vector3.zero
         for _, p in ipairs(allParts) do sum = sum + p.Position end
         local sourceCenter = sum / #allParts
@@ -100,7 +99,7 @@ Tab:CreateButton({
         local createdParts = {}
 
         for _, sourcePart in ipairs(allParts) do
-            -- 1. Determine part type from Name (as in your raw logs)
+            -- Determine part type (using Name, as in raw logs)
             local partType = "Normal"
             local name = sourcePart.Name
             if name == "Truss" then partType = "Truss"
@@ -113,12 +112,13 @@ Tab:CreateButton({
             elseif name == "Spawn" then partType = "Spawn"
             end
 
-            -- 2. Compute offset from source centre and target position
+            -- Offset from source centre
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
+            -- Full target CFrame (includes rotation)
             local targetCFrame = CFrame.new(targetPos) * (sourcePart.CFrame - sourcePart.CFrame.Position)
 
-            -- 3. Create part at destination origin (centre of your plot + offsets)
+            -- 1. Create part at destination origin (centre of your plot + offsets)
             local createArgs = {"CreatePart", partType, CFrame.new(destOrigin), localBuildFolder}
             local ok, newPart = pcall(function() return remote:InvokeServer(unpack(createArgs)) end)
             if not ok or not newPart then
@@ -135,7 +135,7 @@ Tab:CreateButton({
             end
             table.insert(createdParts, actualPart)
 
-            -- 4. SyncRotate – exact structure from raw log
+            -- 2. SyncRotate – exact structure from raw logs
             local pivotCFrame = targetCFrame - targetCFrame.Position
             local currentCFrame = CFrame.new(destOrigin)
             local rotArgs = {
@@ -144,9 +144,9 @@ Tab:CreateButton({
                 { "AroundPivot", pivotCFrame, "Center", currentCFrame, "Center" }
             }
             pcall(function() remote:InvokeServer(unpack(rotArgs)) end)
-            task.wait(0.5)
+            task.wait(0.3)
 
-            -- 5. SyncMove – exact structure from raw log
+            -- 3. SyncMove – exact structure from raw logs
             local delta = targetPos - destOrigin
             local moveArgs = {
                 "SyncMove",
@@ -154,34 +154,32 @@ Tab:CreateButton({
                 { "AlongFace", vec(delta), "Global", CFrame.new(targetPos) }
             }
             pcall(function() remote:InvokeServer(unpack(moveArgs)) end)
-            task.wait(0.5)
+            task.wait(0.3)
 
-            -- 6. SyncResize – exact structure (using dummy ResizeFace, server applies Size from first table)
+            -- 4. SyncResize – exact structure from raw logs (Size in first table)
             local resizeArgs = {
                 "SyncResize",
                 { { Part = actualPart, CFrame = CFrame.new(targetPos), Size = vec(sourcePart.Size) } },
                 { "ResizeFace", Enum.NormalId.Front, 1, vec(Vector3.zero), "Z", sourcePart.Size, "Normal" }
             }
             pcall(function() remote:InvokeServer(unpack(resizeArgs)) end)
-            task.wait(0.5)
+            task.wait(0.4)
 
             ::continue::
         end
 
-        -- Optional: group copied parts into a Model (mirror source grouping? Not required for basic copy)
         if #createdParts > 0 then
-            -- You can call CreateGroup if you want to group them all; otherwise skip.
-            -- remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
+            -- Optional: group all parts into a model (if needed)
+            remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts copied", Duration = 8})
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 8})
     end,
 })
 
 Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     refreshPlayers()
-    Dropdown:SetOptions(playerOptions)
-    if #playerOptions > 0 then Dropdown:SetValue({playerOptions[1]}) end
+    Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Fixed Version Loaded", Content = "Uses exact remote call structures", Duration = 8})
+Rayfield:Notify({Title = "Fixed Rotation Version Loaded", Content = "Uses exact AroundPivot / AlongFace structures", Duration = 8})
