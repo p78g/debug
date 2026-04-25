@@ -1,9 +1,9 @@
--- Town Build Copier - EXACT Working Resize Logic + Height = 4
+-- Town Build Copier - Exact Relative Positioning + Resize First → Rotate → Move
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Copier - Working Resize",
+    Name = "Town Copier - Exact Positioning",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -26,7 +26,7 @@ end
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
 local localBuildFolder = localBuildArea:WaitForChild("Build")
 
-local BASE_Y = 4   -- Decreased by 1 as requested
+local BASE_Y = 4
 local X_OFFSET = -28.637
 local Z_OFFSET = -17.512
 local EXTRA_Y = 0
@@ -62,8 +62,8 @@ Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, Current
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Resize Working)",
-    Description = "Exact resize logic you said worked + Height = 4",
+    Name = "🔄 Copy Build (Exact Relative + Resize First)",
+    Description = "Resize → Rotate → Move | Exact relative positioning",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -92,7 +92,7 @@ Tab:CreateButton({
             return
         end
 
-        -- Source center
+        -- Calculate source center
         local sumX, sumY, sumZ = 0, 0, 0
         for _, p in ipairs(allParts) do
             local pos = p.Position
@@ -100,10 +100,9 @@ Tab:CreateButton({
         end
         local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
 
-        -- Height fixed to 4
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Starting Copy", Content = "Height = 4 | Using exact working resize logic", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Resize first → Rotate → Move", Duration = 6})
 
         local createdParts = {}
 
@@ -130,20 +129,20 @@ Tab:CreateButton({
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- Rotation (simple for now)
-                remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
-                task.wait(0.5)
-
-                -- Move
-                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
-                task.wait(0.5)
-
-                -- EXACT WORKING RESIZE LOGIC YOU PROVIDED
+                -- 1. Resize First (using the logic you said worked)
                 remote:InvokeServer("SyncResize",
                     {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
                     { "ResizeFace", Enum.NormalId.Right, sourcePart.Size.X - newPart.Size.X, Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), "X", Vector3.xAxis, "Normal" }
                 )
-                task.wait(0.6)
+                task.wait(0.5)
+
+                -- 2. Rotate
+                remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
+                task.wait(0.5)
+
+                -- 3. Move (final positioning)
+                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                task.wait(0.5)
             end
         end
 
@@ -160,4 +159,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Height = 4 | Exact working resize logic restored", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Resize first → Rotate → Move | Height = 4", Duration = 8})
