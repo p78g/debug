@@ -1,12 +1,12 @@
--- Town Build Copier - Rayfield UI Edition
--- Pure F3X Remote Calls | Works in Town
+-- Town Build Copier - Updated (Real Offset = Ghost by default + Better Resize)
+-- Pure F3X Remote Calls
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
     Name = "Town Build Copier",
-    LoadingTitle = "Loading Build Copier...",
-    LoadingSubtitle = "by Grok",
+    LoadingTitle = "Loading...",
+    LoadingSubtitle = "F3X Remote Edition",
     ConfigurationSaving = {
         Enabled = true,
         FolderName = "TownCopier",
@@ -15,16 +15,9 @@ local Window = Rayfield:CreateWindow({
     Theme = "Default"
 })
 
-local Tab = Window:CreateTab("Build Copier", "hammer") -- Lucide icon
+local Tab = Window:CreateTab("Build Copier", "hammer")
 
-local Section = Tab:CreateSection("Copy Settings")
-
--- Variables
-local selectedPlayer = nil
-local realOffsetX, realOffsetY, realOffsetZ = 0, 0, 0
-local ghostOffsetX, ghostOffsetY, ghostOffsetZ = -28.637, -17.512, 0
-local baseHeight = 5  -- as you requested (was 3 before)
-
+-- Services & Remote
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
@@ -38,15 +31,20 @@ local remote = tool:WaitForChild("SyncAPI"):WaitForChild("ServerEndpoint")
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
 local localBuildFolder = localBuildArea:WaitForChild("Build")
 
--- Refresh player list
+local baseHeight = 5
+
+-- Variables
+local selectedPlayer = nil
+local realOffsetX, realOffsetY, realOffsetZ = -28.637, -17.512, 0   -- Default same as ghost
+local ghostOffsetX, ghostOffsetY, ghostOffsetZ = -28.637, -17.512, 0
+
 local playerOptions = {}
 
 local function refreshPlayers()
     playerOptions = {}
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
-            local area = BUILDING_AREAS:FindFirstChild(plr.Name .. "BuildArea")
-            if area then
+            if BUILDING_AREAS:FindFirstChild(plr.Name .. "BuildArea") then
                 table.insert(playerOptions, plr.Name)
             end
         end
@@ -55,12 +53,13 @@ end
 
 refreshPlayers()
 
+Tab:CreateSection("Player Selection")
+
 local Dropdown = Tab:CreateDropdown({
     Name = "Select Player to Copy From",
     Options = playerOptions,
     CurrentOption = {},
     MultipleOptions = false,
-    Flag = "SourcePlayer",
     Callback = function(Option)
         if typeof(Option) == "table" and #Option > 0 then
             selectedPlayer = Players:FindFirstChild(Option[1])
@@ -70,70 +69,23 @@ local Dropdown = Tab:CreateDropdown({
     end,
 })
 
--- Real Copy Offsets
-Tab:CreateSection("Real Copy Offsets (Default 0)")
+Tab:CreateSection("Real Copy Offsets (now defaults to ghost values)")
 
-Tab:CreateSlider({
-    Name = "Real X Offset",
-    Range = {-100, 100},
-    Increment = 0.1,
-    CurrentValue = 0,
-    Flag = "RealX",
-    Callback = function(Value) realOffsetX = Value end,
-})
+Tab:CreateSlider({ Name = "Real X Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = realOffsetX, Callback = function(v) realOffsetX = v end })
+Tab:CreateSlider({ Name = "Real Y Offset", Range = {-50, 150}, Increment = 0.01, CurrentValue = realOffsetY, Callback = function(v) realOffsetY = v end })
+Tab:CreateSlider({ Name = "Real Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = realOffsetZ, Callback = function(v) realOffsetZ = v end })
 
-Tab:CreateSlider({
-    Name = "Real Y Offset",
-    Range = {-50, 150},
-    Increment = 0.1,
-    CurrentValue = 0,
-    Flag = "RealY",
-    Callback = function(Value) realOffsetY = Value end,
-})
-
-Tab:CreateSlider({
-    Name = "Real Z Offset",
-    Range = {-100, 100},
-    Increment = 0.1,
-    CurrentValue = 0,
-    Flag = "RealZ",
-    Callback = function(Value) realOffsetZ = Value end,
-})
-
--- Ghost Preview Offsets
 Tab:CreateSection("Ghost Preview Offsets")
 
-Tab:CreateSlider({
-    Name = "Ghost X Offset",
-    Range = {-100, 100},
-    Increment = 0.1,
-    CurrentValue = -28.637,
-    Flag = "GhostX",
-    Callback = function(Value) ghostOffsetX = Value end,
-})
+Tab:CreateSlider({ Name = "Ghost X Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = ghostOffsetX, Callback = function(v) ghostOffsetX = v end })
+Tab:CreateSlider({ Name = "Ghost Y Offset", Range = {-50, 150}, Increment = 0.01, CurrentValue = ghostOffsetY, Callback = function(v) ghostOffsetY = v end })
+Tab:CreateSlider({ Name = "Ghost Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = ghostOffsetZ, Callback = function(v) ghostOffsetZ = v end })
 
-Tab:CreateSlider({
-    Name = "Ghost Y Offset",
-    Range = {-50, 150},
-    Increment = 0.1,
-    CurrentValue = -17.512,
-    Flag = "GhostY",
-    Callback = function(Value) ghostOffsetY = Value end,
-})
+-- ==================== COPY FUNCTION ====================
 
-Tab:CreateSlider({
-    Name = "Ghost Z Offset",
-    Range = {-100, 100},
-    Increment = 0.1,
-    CurrentValue = 0,
-    Flag = "GhostZ",
-    Callback = function(Value) ghostOffsetZ = Value end,
-})
-
--- Main Copy Button
 Tab:CreateButton({
     Name = "🔄 Copy Build (Real)",
-    Description = "Copies the selected player's build into your plot using remotes only",
+    Description = "Copies using remotes only - Improved resize",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "No player selected!", Duration = 5})
@@ -141,132 +93,10 @@ Tab:CreateButton({
         end
 
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
-        if not sourceArea then
-            Rayfield:Notify({Title = "Error", Content = "Source plot not found!", Duration = 5})
-            return
-        end
+        if not sourceArea then return Rayfield:Notify({Title="Error", Content="Source plot not found"}) end
 
         local sourceBuild = sourceArea:WaitForChild("Build")
 
-        -- Collect all BaseParts (flatten models)
-        local allParts = {}
-        local function collect(obj)
-            for _, v in ipairs(obj:GetDescendants()) do
-                if v:IsA("BasePart") then
-                    table.insert(allParts, v)
-                end
-            end
-        end
-        collect(sourceBuild)
-
-        if #allParts == 0 then
-            Rayfield:Notify({Title = "Error", Content = "No parts found in source build!", Duration = 5})
-            return
-        end
-
-        -- Calculate source center
-        local sumX, sumY, sumZ = 0, 0, 0
-        for _, p in ipairs(allParts) do
-            local pos = p.Position
-            sumX += pos.X; sumY += pos.Y; sumZ += pos.Z
-        end
-        local sourceCenter = Vector3.new(sumX / #allParts, sumY / #allParts, sumZ / #allParts)
-
-        local destOrigin = localBuildArea.Position + Vector3.new(realOffsetX, baseHeight + realOffsetY, realOffsetZ)
-
-        Rayfield:Notify({Title = "Copying...", Content = "Starting remote copy of " .. #allParts .. " parts...", Duration = 6})
-
-        local createdParts = {}  -- for later grouping
-
-        for _, sourcePart in ipairs(allParts) do
-            local offset = sourcePart.Position - sourceCenter
-            local targetPos = destOrigin + offset
-
-            local partType = "Normal"
-            if sourcePart.Name == "Truss" then partType = "Truss"
-            elseif sourcePart.ClassName == "WedgePart" then partType = "Wedge"
-            elseif sourcePart.ClassName == "CornerWedgePart" then partType = "Corner"
-            elseif sourcePart.ClassName == "Cylinder" or sourcePart.Shape == Enum.PartType.Cylinder then partType = "Cylinder"
-            elseif sourcePart.Shape == Enum.PartType.Ball then partType = "Ball"
-            elseif sourcePart.ClassName == "Seat" then partType = "Seat"
-            elseif sourcePart.ClassName == "VehicleSeat" then partType = "Vehicle Seat"
-            elseif sourcePart.ClassName == "SpawnLocation" then partType = "Spawn"
-            end
-
-            -- 1. CreatePart
-            local createArgs = {
-                "CreatePart",
-                partType,
-                CFrame.new(targetPos.X, targetPos.Y, targetPos.Z),
-                localBuildFolder
-            }
-            local newPart = remote:InvokeServer(unpack(createArgs))
-
-            if newPart and newPart:IsA("BasePart") then
-                table.insert(createdParts, newPart)
-
-                -- 2. SyncRotate (preserve original rotation)
-                local rotArgs = {
-                    "SyncRotate",
-                    {{ Part = newPart, CFrame = sourcePart.CFrame }},
-                    { "AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center" }
-                }
-                remote:InvokeServer(unpack(rotArgs))
-                task.wait(0.5)
-
-                -- 3. SyncMove (final position)
-                local moveArgs = {
-                    "SyncMove",
-                    {{ Part = newPart, CFrame = CFrame.new(targetPos) }},
-                    { "AlongFace", Vector3.new(), "Global", CFrame.new() }
-                }
-                remote:InvokeServer(unpack(moveArgs))
-                task.wait(0.5)
-
-                -- 4. SyncResize (preserve size)
-                local resizeArgs = {
-                    "SyncResize",
-                    {{ Part = newPart, CFrame = CFrame.new(targetPos), Size = sourcePart.Size }},
-                    { "ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal" }
-                }
-                remote:InvokeServer(unpack(resizeArgs))
-                task.wait(0.5)
-            end
-        end
-
-        -- Optional: Recreate groups (simple version - groups all new parts into one model)
-        if #createdParts > 0 then
-            local groupArgs = {
-                "CreateGroup",
-                "Model",
-                localBuildFolder,
-                createdParts
-            }
-            remote:InvokeServer(unpack(groupArgs))
-        end
-
-        Rayfield:Notify({Title = "Success!", Content = "Build copied! (" .. #allParts .. " parts)", Duration = 8})
-    end,
-})
-
--- Ghost Preview Button
-Tab:CreateButton({
-    Name = "👻 Show Ghost Preview",
-    Description = "Shows transparent preview with current ghost offsets",
-    Callback = function()
-        -- Clear old ghosts first (simple way: destroy any existing "GhostPreview" folder)
-        local oldGhost = Workspace:FindFirstChild("GhostPreview")
-        if oldGhost then oldGhost:Destroy() end
-
-        if not selectedPlayer then
-            Rayfield:Notify({Title = "Error", Content = "Select a player first!", Duration = 4})
-            return
-        end
-
-        local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
-        if not sourceArea then return end
-
-        local sourceBuild = sourceArea:WaitForChild("Build")
         local allParts = {}
         local function collect(obj)
             for _, v in ipairs(obj:GetDescendants()) do
@@ -275,7 +105,96 @@ Tab:CreateButton({
         end
         collect(sourceBuild)
 
+        if #allParts == 0 then
+            Rayfield:Notify({Title = "Error", Content = "No parts found!", Duration = 5})
+            return
+        end
+
+        -- Source center
         local sumX, sumY, sumZ = 0, 0, 0
+        for _, p in ipairs(allParts) do
+            local pos = p.Position
+            sumX += pos.X; sumY += pos.Y; sumZ += pos.Z
+        end
+        local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
+
+        local destOrigin = localBuildArea.Position + Vector3.new(realOffsetX, baseHeight + realOffsetY, realOffsetZ)
+
+        Rayfield:Notify({Title = "Copying...", Content = "Processing " .. #allParts .. " parts...", Duration = 6})
+
+        local createdParts = {}
+
+        for _, sourcePart in ipairs(allParts) do
+            local offset = sourcePart.Position - sourceCenter
+            local targetPos = destOrigin + offset
+            local targetCFrame = CFrame.new(targetPos) * (sourcePart.CFrame - sourcePart.Position)  -- preserve rotation
+
+            -- Part Type
+            local partType = "Normal"
+            local class = sourcePart.ClassName
+            if class == "TrussPart" then partType = "Truss"
+            elseif class == "WedgePart" then partType = "Wedge"
+            elseif class == "CornerWedgePart" then partType = "Corner"
+            elseif class == "Cylinder" or sourcePart.Shape == Enum.PartType.Cylinder then partType = "Cylinder"
+            elseif sourcePart.Shape == Enum.PartType.Ball then partType = "Ball"
+            elseif class == "Seat" then partType = "Seat"
+            elseif class == "VehicleSeat" then partType = "Vehicle Seat"
+            elseif class == "SpawnLocation" then partType = "Spawn"
+            end
+
+            -- 1. CreatePart
+            local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
+
+            if newPart and newPart:IsA("BasePart") then
+                table.insert(createdParts, newPart)
+
+                -- 2. SyncRotate
+                remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
+                task.wait(0.5)
+
+                -- 3. SyncMove (ensure position)
+                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                task.wait(0.5)
+
+                -- 4. Improved SyncResize
+                remote:InvokeServer("SyncResize", 
+                    {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
+                    { "ResizeFace", Enum.NormalId.Right, 0, Vector3.new(0,0,0), "X", Vector3.xAxis, "Normal" }
+                )
+                task.wait(0.6)  -- slightly longer for resize stability
+            end
+        end
+
+        -- Simple grouping
+        if #createdParts > 0 then
+            remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
+        end
+
+        Rayfield:Notify({Title = "Success", Content = "Build copied (" .. #allParts .. " parts) with improved resize!", Duration = 8})
+    end,
+})
+
+-- Ghost Preview (unchanged logic)
+Tab:CreateButton({
+    Name = "👻 Show Ghost Preview",
+    Callback = function()
+        local old = Workspace:FindFirstChild("GhostPreview")
+        if old then old:Destroy() end
+
+        if not selectedPlayer then return Rayfield:Notify({Title="Error", Content="Select player first"}) end
+
+        local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
+        local sourceBuild = sourceArea:WaitForChild("Build")
+
+        local allParts = {}
+        local function collect(obj)
+            for _, v in ipairs(obj:GetDescendants()) do
+                if v:IsA("BasePart") then table.insert(allParts, v) end
+            end
+        end
+        collect(sourceBuild)
+
+        local sumX, sumY, sumZ = 0,0,0
         for _, p in ipairs(allParts) do
             local pos = p.Position
             sumX += pos.X; sumY += pos.Y; sumZ += pos.Z
@@ -291,25 +210,26 @@ Tab:CreateButton({
         for _, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
+            local targetCFrame = CFrame.new(targetPos) * (sourcePart.CFrame - sourcePart.Position)
 
             local clone = sourcePart:Clone()
             clone.Anchored = true
-            clone.Transparency = 0.7
-            clone.Color = Color3.fromRGB(0, 255, 100)
+            clone.Transparency = 0.65
+            clone.Color = Color3.fromRGB(0, 255, 120)
             clone.CanCollide = false
-            clone.CFrame = CFrame.new(targetPos) * (sourcePart.CFrame - sourcePart.Position)
+            clone.CFrame = targetCFrame
             clone.Parent = ghostFolder
         end
 
-        Rayfield:Notify({Title = "Ghost Preview", Content = "Preview created. Adjust offsets and copy when ready.", Duration = 6})
+        Rayfield:Notify({Title = "Ghost Preview", Content = "Preview shown - adjust offsets then copy", Duration = 6})
     end,
 })
 
 Tab:CreateButton({
     Name = "Clear Ghost Preview",
     Callback = function()
-        local ghost = Workspace:FindFirstChild("GhostPreview")
-        if ghost then ghost:Destroy() end
+        local g = Workspace:FindFirstChild("GhostPreview")
+        if g then g:Destroy() end
     end,
 })
 
@@ -317,13 +237,8 @@ Tab:CreateButton({
     Name = "Refresh Player List",
     Callback = function()
         refreshPlayers()
-        Dropdown:Refresh(playerOptions)  -- Rayfield dropdown refresh method
-        Rayfield:Notify({Title = "Refreshed", Content = "Player list updated", Duration = 3})
+        Dropdown:Refresh(playerOptions)
     end,
 })
 
-Rayfield:Notify({
-    Title = "Town Copier Loaded",
-    Content = "Select a player → adjust offsets → use Copy Build",
-    Duration = 8
-})
+Rayfield:Notify({Title = "Updated Copier Loaded", Content = "Real offsets now match ghost by default + improved resize", Duration = 8})
