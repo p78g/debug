@@ -1,7 +1,5 @@
 -- =============================================
--- BUILD COPIER – Pure Remote Calls + Unique Part Naming
--- Real offsets default to 0,0,0 (inside your plot)
--- Ghost offsets use your measured values
+-- BUILD COPIER – Pure Remote Calls + Correct Part Types
 -- =============================================
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
@@ -112,39 +110,50 @@ end
 
 local function vec(v) return vector.create(v.X, v.Y, v.Z) end
 
--- Copy a single part using remote calls, with unique temporary naming
-local function copySinglePart(part, srcOrigin, dstOrigin, dstBuild)
-    local typeMap = {
-        Part = "Normal", Truss = "Truss", Wedge = "Wedge", Corner = "Corner",
-        Cylinder = "Cylinder", Ball = "Ball", Seat = "Seat",
-        ["Vehicle Seat"] = "Vehicle Seat", Spawn = "Spawn"
-    }
-    local partType = typeMap[part.Name] or "Normal"
+-- Copy a single part using remote calls – no clones, no renaming
+local function copySinglePart(sourcePart, srcOrigin, dstOrigin, dstBuild)
+    -- Determine part type based on source part's name
+    local partType = nil
+    local name = sourcePart.Name
+    if name == "Part" then partType = "Normal"
+    elseif name == "Truss" then partType = "Truss"
+    elseif name == "Wedge" then partType = "Wedge"
+    elseif name == "Corner" then partType = "Corner"
+    elseif name == "Cylinder" then partType = "Cylinder"
+    elseif name == "Ball" then partType = "Ball"
+    elseif name == "Seat" then partType = "Seat"
+    elseif name == "Vehicle Seat" then partType = "Vehicle Seat"
+    elseif name == "Spawn" then partType = "Spawn"
+    else partType = "Normal"
+    end
 
-    local offset = part.Position - srcOrigin
+    local offset = sourcePart.Position - srcOrigin
     local targetPos = dstOrigin + offset
-    local targetCFrame = CFrame.new(targetPos) * (part.CFrame - part.CFrame.Position)
+    local targetCFrame = CFrame.new(targetPos) * (sourcePart.CFrame - sourcePart.CFrame.Position)
 
     local r = getRemote()
     if not r then return nil end
 
-    -- Create part at destination origin
+    -- Create at destination origin
     local createArgs = {"CreatePart", partType, CFrame.new(dstOrigin), dstBuild}
     local ok, newPart = pcall(function() return r:InvokeServer(unpack(createArgs)) end)
-    if not ok or not newPart then return nil end
+    if not ok or not newPart then
+        warn("CreatePart failed for", sourcePart.Name)
+        return nil
+    end
     task.wait(0.1)
 
+    -- The new part is the instance we will operate on
     local actualPart = newPart
-    if not actualPart:IsA("BasePart") then actualPart = dstBuild:FindFirstChild(part.Name) end
-    if not actualPart then return nil end
+    if not actualPart:IsA("BasePart") then
+        actualPart = dstBuild:FindFirstChild(sourcePart.Name)  -- fallback
+    end
+    if not actualPart then
+        warn("Could not locate created part for", sourcePart.Name)
+        return nil
+    end
 
-    -- Give it a unique temporary name so server can differentiate
-    local originalName = actualPart.Name
-    local uniqueName = "Copy_" .. os.clock() .. "_" .. originalName
-    actualPart.Name = uniqueName
-    task.wait(0.05)
-
-    -- Rotate
+    -- Rotate (exact pattern from your example)
     local pivotCFrame = targetCFrame - targetCFrame.Position
     local currentCFrame = CFrame.new(dstOrigin)
     local rotArgs = {
@@ -155,7 +164,7 @@ local function copySinglePart(part, srcOrigin, dstOrigin, dstBuild)
     pcall(function() r:InvokeServer(unpack(rotArgs)) end)
     task.wait(0.5)
 
-    -- Move
+    -- Move (exact pattern from your example)
     local delta = targetPos - dstOrigin
     local moveArgs = {
         "SyncMove",
@@ -165,17 +174,15 @@ local function copySinglePart(part, srcOrigin, dstOrigin, dstBuild)
     pcall(function() r:InvokeServer(unpack(moveArgs)) end)
     task.wait(0.5)
 
-    -- Resize
+    -- Resize (using your example pattern; we pass the target size)
+    -- The ResizeFace part may be ignored by the server; it only cares about the Size in the first table.
     local resizeArgs = {
         "SyncResize",
-        { { Part = actualPart, CFrame = CFrame.new(targetPos), Size = vec(part.Size) } },
-        { "ResizeFace", Enum.NormalId.Front, 1, vec(Vector3.new(0,0,0)), "Z", part.Size, "Normal" }
+        { { Part = actualPart, CFrame = CFrame.new(targetPos), Size = vec(sourcePart.Size) } },
+        { "ResizeFace", Enum.NormalId.Front, 1, vec(Vector3.new(0,0,0)), "Z", sourcePart.Size, "Normal" }
     }
     pcall(function() r:InvokeServer(unpack(resizeArgs)) end)
     task.wait(0.5)
-
-    -- Restore original name (optional)
-    actualPart.Name = originalName
 
     return actualPart
 end
@@ -202,13 +209,13 @@ local function copyRealBuild()
         return
     end
 
-    -- Compute source centre
+    -- Compute source centre (auto-centre)
     local srcCentre = computeSourceCentre(srcBA)
     local finalY = baseHeight + realYextra
     local srcOrigin = srcCentre + Vector3.new(0, finalY, 0)
     local dstOrigin = dstBA.Position + Vector3.new(realX, finalY, realZ)
 
-    -- Collect all BaseParts recursively
+    -- Collect all BaseParts recursively (flatten models)
     local allParts = {}
     local function collect(obj)
         for _, child in ipairs(obj:GetChildren()) do
@@ -234,7 +241,7 @@ local function copyRealBuild()
         if copySinglePart(part, srcOrigin, dstOrigin, dstBuild) then
             successCount = successCount + 1
         end
-        task.wait(0.1)
+        task.wait(0.1) -- small delay between parts
     end
     Rayfield:Notify({ Title = "Complete", Content = successCount .. "/" .. #allParts .. " parts copied." })
 end
@@ -302,7 +309,6 @@ local function showRealMarker()
         Rayfield:Notify({ Title = "Error", Content = "Select a player." })
         return
     end
-    local srcBA = getBuildArea(playerMapping[selectedPlayer])
     local dstBA = getBuildArea(game.Players.LocalPlayer.Name .. "BuildArea")
     if not dstBA then return end
     local finalY = baseHeight + realYextra
@@ -340,4 +346,4 @@ MainTab:CreateButton({ Name = "Refresh Players", Callback = function()
     if newOpts[1] then dropdown:SetValue(newOpts[1]); selectedPlayer = newOpts[1] end
 end })
 
-Rayfield:Notify({ Title = "Ready", Content = "Ghost uses your measured offsets. Real copy uses separate offsets (default 0). Use marker to verify." })
+Rayfield:Notify({ Title = "Ready", Content = "Real copy uses remote calls and correct part types. Real offsets default to 0 (inside your plot)." })
