@@ -69,84 +69,73 @@ end
 
 -- Core copy function for a single part
 local function copyPart(sourcePart, sourcePlotPart, localPlotPart, localBuildFolder)
-    -- Map part names to the type string expected by SyncAPI
+    -- Part type mapping
     local typeMap = {
-        Part = "Normal",
-        Truss = "Truss",
-        Wedge = "Wedge",
-        Corner = "Corner",
-        Cylinder = "Cylinder",
-        Ball = "Ball",
-        Seat = "Seat",
-        ["Vehicle Seat"] = "Vehicle Seat",
-        Spawn = "Spawn"
+        Part = "Normal", Truss = "Truss", Wedge = "Wedge", Corner = "Corner",
+        Cylinder = "Cylinder", Ball = "Ball", Seat = "Seat",
+        ["Vehicle Seat"] = "Vehicle Seat", Spawn = "Spawn"
     }
     local partType = typeMap[sourcePart.Name] or "Normal"
 
-    -- Origins: building surface is 3 studs above the plot part
+    -- Origins (build surface 3 studs above plot)
     local sourceOrigin = sourcePlotPart.Position + Vector3.new(0, 3, 0)
     local localOrigin = localPlotPart.Position + Vector3.new(0, 3, 0)
 
-    -- Relative offset from source plot centre
+    -- Relative offset and target CFrame (position + rotation)
     local relativePos = sourcePart.Position - sourceOrigin
     local targetPos = localOrigin + relativePos
-
-    -- Preserve rotation relative to the plot (since plots are axis-aligned)
     local sourceCFrame = sourcePart.CFrame
     local targetCFrame = CFrame.new(targetPos) * (sourceCFrame - sourceCFrame.Position)
 
-    -- Get the remote function (SyncAPI)
-    local player = game.Players.LocalPlayer
-    local char = player.Character or player.CharacterAdded:Wait()
+    -- Get remote
+    local char = game.Players.LocalPlayer.Character
+    if not char then return false end
     local buildingTools = char:FindFirstChild("Building Tools")
-    if not buildingTools then
-        Rayfield:Notify({Title = "Error", Content = "Building Tools not found in character", Duration = 5})
-        return false
-    end
+    if not buildingTools then return false end
     local syncAPI = buildingTools:FindFirstChild("SyncAPI")
-    if not syncAPI then
-        Rayfield:Notify({Title = "Error", Content = "SyncAPI not found", Duration = 5})
-        return false
-    end
+    if not syncAPI then return false end
     local remote = syncAPI:FindFirstChild("ServerEndpoint")
-    if not remote then
-        Rayfield:Notify({Title = "Error", Content = "ServerEndpoint not found in SyncAPI", Duration = 5})
-        return false
-    end
+    if not remote then return false end
 
-    -- 1. Create part at local plot centre
+    -- 1. Create part at centre of local plot
     local createArgs = {"CreatePart", partType, CFrame.new(localOrigin), localBuildFolder}
     local success, newPart = pcall(function()
         return remote:InvokeServer(unpack(createArgs))
     end)
     if not success or not newPart then
-        warn("CreatePart failed for", sourcePart.Name)
+        warn("CreatePart failed:", sourcePart.Name)
         return false
     end
 
-    -- 2. Rotate to match source
-    local rotateArgs = {
-        "SyncRotate",
-        {{Part = newPart, CFrame = targetCFrame}},
-        {"AroundPivot", CFrame.new(targetPos), "Center", CFrame.new(targetPos), "Center"}
-    }
-    pcall(function() remote:InvokeServer(unpack(rotateArgs)) end)
+    -- Small delay to ensure part exists in workspace
+    task.wait(0.05)
 
-    -- 3. Move to exact position (already correct after rotation but ensures)
-    local moveArgs = {
-        "SyncMove",
-        {{Part = newPart, CFrame = targetCFrame}},
-        {"AlongFace", Vector3.new(0,0,0), "Global", targetCFrame}
-    }
-    pcall(function() remote:InvokeServer(unpack(moveArgs)) end)
+    -- 2. Move and rotate in one call (most building tools support CFrame move)
+    local moveArgs = {"SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {}}
+    local moveSuccess, moveErr = pcall(function()
+        return remote:InvokeServer(unpack(moveArgs))
+    end)
+    if not moveSuccess then
+        warn("SyncMove failed:", moveErr)
+        -- fallback: try separate rotate and move
+        local rotArgs = {"SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {}}
+        pcall(function() remote:InvokeServer(unpack(rotArgs)) end)
+        local posArgs = {"SyncMove", {{Part = newPart, CFrame = CFrame.new(targetPos)}}, {}}
+        pcall(function() remote:InvokeServer(unpack(posArgs)) end)
+    end
 
-    -- 4. Resize to match source
+    -- 3. Resize
     local resizeArgs = {
         "SyncResize",
         {{Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size}},
         {"ResizeFace", Enum.NormalId.Front, 1, Vector3.zAxis, "Z", sourcePart.Size, "Normal"}
     }
-    pcall(function() remote:InvokeServer(unpack(resizeArgs)) end)
+    local resizeSuccess, resizeErr = pcall(function()
+        return remote:InvokeServer(unpack(resizeArgs))
+    end)
+    if not resizeSuccess then
+        warn("SyncResize failed:", resizeErr)
+    end
 
     return true
 end
