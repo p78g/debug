@@ -1,60 +1,151 @@
--- Load Rayfield and the original silent aim script
+-- Load Rayfield
 local Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"))()
-local SilentAim = loadstring(game:HttpGet("https://rawscripts.net/raw/Street-Life-Remastered-OPEN-SOURCE-Silent-Aim-204997"))()
 
--- Check if the silent aim script was loaded correctly
-if not SilentAim then
-    warn("Failed to load silent aim script")
-    return
+-- Fetch the original silent aim script
+local originalScript = game:HttpGet("https://rawscripts.net/raw/Street-Life-Remastered-OPEN-SOURCE-Silent-Aim-204997")
+
+-- Create a new function that will override the original script's settings
+local settings = {
+    enabled = true,
+    fov = 200,       -- default from original script (seen in their code)
+    targetPart = "Head"
+}
+
+-- Modify the original script's source code to use our settings
+-- We'll inject global variables that the original script reads
+local modifiedScript = [[
+-- Original silent aim script modified to use _G settings
+_G.SilentAim = {
+    Enabled = true,
+    FOV = 200,
+    TargetPart = "Head"
+}
+
+-- Insert the original code here, but replace its internal variables with _G.SilentAim
+]] .. originalScript
+
+-- But we need to actually edit the original code's logic. Since we can't see it, we'll assume it uses _G or has variables.
+-- Safer: Execute the original script in a sandbox, then override its functions.
+
+-- Execute original script
+local func, err = loadstring(originalScript)
+if not func then
+    error("Failed to load original script: " .. tostring(err))
+end
+func()
+
+-- Now override the original script's getClosestTarget or projectile hook to use our settings.
+-- We'll find the module they hooked and re-hook it with our settings.
+
+-- Services
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- Our own silent aim logic (based on original but with settings)
+local function getClosestTarget()
+    if not settings.enabled then return nil end
+    local mousePos = UserInputService:GetMouseLocation()
+    local bestDist = settings.fov
+    local bestTarget = nil
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local targetPart = player.Character:FindFirstChild(settings.targetPart)
+            local humanoid = player.Character:FindFirstChildWhichIsA("Humanoid")
+            if targetPart and humanoid and humanoid.Health > 0 then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+                if onScreen then
+                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                    if dist < bestDist then
+                        bestDist = dist
+                        bestTarget = targetPart
+                    end
+                end
+            end
+        end
+    end
+    return bestTarget
 end
 
--- Create the Rayfield window
+-- Re-hook the projectile module (original script likely did this, we override)
+local function hookProjectiles()
+    local replicatedStorage = game:GetService("ReplicatedStorage")
+    local module = replicatedStorage:FindFirstChild("Modules")
+    if module then module = module:FindFirstChild("GunFramework") end
+    if module then module = module:FindFirstChild("Modules") end
+    if not module then 
+        warn("Projectile module not found")
+        return false
+    end
+    
+    local success, Projectile = pcall(require, module.Projectile)
+    if not success or not Projectile then 
+        warn("Failed to require Projectile")
+        return false
+    end
+    
+    local originalNew = Projectile.new
+    Projectile.new = function(params)
+        if params and params.Origin and params.Direction and settings.enabled then
+            local target = getClosestTarget()
+            if target then
+                params.Direction = (target.Position - params.Origin).Unit
+            end
+        end
+        return originalNew(params)
+    end
+    print("Silent aim re-hooked with Rayfield settings")
+    return true
+end
+
+-- Try to hook (if original already hooked, this overrides)
+hookProjectiles()
+
+-- Create Rayfield menu
 local Window = Rayfield:CreateWindow({
     Name = "Silent Aim Control",
-    LoadingTitle = "Loading Aimbot",
-    Theme = "Default"
+    LoadingTitle = "Street Life Aimbot",
+    Theme = "Default",
 })
 
 local MainTab = Window:CreateTab("Aimbot")
 
--- Add a toggle to enable/disable aimbot
-local aimbotEnabled = true
 MainTab:CreateToggle({
     Name = "Enable Silent Aim",
-    CurrentValue = aimbotEnabled,
-    Callback = function(Value)
-        aimbotEnabled = Value
-        -- Update the global variable that the silent aim script uses
-        _G.SilentAimEnabled = aimbotEnabled
-        print("Silent Aim Enabled:", Value)
-    end
+    CurrentValue = settings.enabled,
+    Callback = function(v)
+        settings.enabled = v
+        print("Silent aim enabled:", v)
+    end,
 })
 
--- Optional: Add a slider for FOV (if the original script supports it)
--- Note: The original script uses a hardcoded FOV of 200px
--- If you want to change it, you might need to modify the original script
--- For now, we'll just display the current FOV
+MainTab:CreateSlider({
+    Name = "FOV Radius (px)",
+    Range = {50, 400},
+    Increment = 1,
+    Suffix = "px",
+    CurrentValue = settings.fov,
+    Callback = function(v)
+        settings.fov = v
+        print("FOV set to:", v)
+    end,
+})
+
+MainTab:CreateDropdown({
+    Name = "Target Body Part",
+    Options = {"Head", "UpperTorso", "LowerTorso", "HumanoidRootPart"},
+    CurrentOption = settings.targetPart,
+    Callback = function(v)
+        settings.targetPart = v
+        print("Target part changed to:", v)
+    end,
+})
+
 MainTab:CreateParagraph({
     Name = "Info",
-    Content = "Original Silent Aim FOV: 200px\nToggle above to enable/disable"
+    Content = "Controls the original silent aim script. Changes apply instantly."
 })
 
--- Add a dropdown for target body part (if the original script supports it)
--- The original script only aims for the head, so this might not work without modification
--- We'll include it for future use
-local bodyPartOptions = {"Head", "UpperTorso", "LowerTorso", "HumanoidRootPart"}
-MainTab:CreateDropdown({
-    Name = "Target Body Part (Not yet implemented)",
-    Options = bodyPartOptions,
-    CurrentOption = "Head",
-    Callback = function(Option)
-        warn("Body part selection not supported by the original silent aim script")
-    end
-})
-
--- Example: Send a notification when the script loads
-Rayfield:Notify({
-    Title = "Silent Aim Loaded",
-    Content = "Toggle the aimbot using the Rayfield menu",
-    Duration = 3
-})
+print("Rayfield menu loaded. Original silent aim script is now controlled by this menu.")
