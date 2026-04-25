@@ -1,21 +1,16 @@
--- Town Build Copier - Fixed Rotation + Resize + Creation
--- Updated: Better CreatePart → Rotate → Move → Resize order
+-- Town Build Copier - Efficient Version (Direct Mirror Position + Fixed Spawning)
+-- Creates each part directly at mirrored target position
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Build Copier",
+    Name = "Town Build Copier - Efficient",
     LoadingTitle = "Loading...",
-    LoadingSubtitle = "Fixed Rotation & Resize",
-    ConfigurationSaving = {
-        Enabled = true,
-        FolderName = "TownCopier",
-        FileName = "Settings"
-    },
+    LoadingSubtitle = "Direct Mirror Positioning",
     Theme = "Default"
 })
 
-local Tab = Window:CreateTab("Build Copier", "hammer")
+local Tab = Window:CreateTab("Copier", "hammer")
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -23,16 +18,22 @@ local LocalPlayer = Players.LocalPlayer
 
 local BUILDING_AREAS = Workspace:WaitForChild("Private Building Areas")
 
-local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local tool = character:WaitForChild("Building Tools")
-local remote = tool:WaitForChild("SyncAPI"):WaitForChild("ServerEndpoint")
+local function getRemote()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local tool = char:WaitForChild("Building Tools", 8)
+    if not tool then 
+        Rayfield:Notify({Title = "Error", Content = "Equip Building Tools first!", Duration = 6})
+        error("Building Tools not equipped")
+    end
+    return tool:WaitForChild("SyncAPI"):WaitForChild("ServerEndpoint")
+end
 
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
 local localBuildFolder = localBuildArea:WaitForChild("Build")
 
 local baseHeight = 5
-
 local selectedPlayer = nil
+
 local realOffsetX, realOffsetY, realOffsetZ = -28.637, -17.512, 0
 local ghostOffsetX, ghostOffsetY, ghostOffsetZ = -28.637, -17.512, 0
 
@@ -46,9 +47,32 @@ local function refreshPlayers()
         end
     end
 end
-
 refreshPlayers()
 
+-- ==================== TEST BUTTON ====================
+Tab:CreateSection("Test Remote")
+
+Tab:CreateButton({
+    Name = "🧪 Test: Spawn ONE Part (Safe Position)",
+    Callback = function()
+        local remote = getRemote()
+        local testPos = localBuildArea.Position + Vector3.new(0, baseHeight + 15, 0)
+        
+        local success, newPart = pcall(function()
+            return remote:InvokeServer("CreatePart", "Normal", CFrame.new(testPos), localBuildFolder)
+        end)
+
+        if success and newPart and newPart:IsA("BasePart") then
+            Rayfield:Notify({Title = "Test Success", Content = "Part spawned! Remote works.", Duration = 8})
+            print("Test part created at:", newPart.Position)
+        else
+            Rayfield:Notify({Title = "Test Failed", Content = "Check F9 console for details", Duration = 10})
+            warn("CreatePart failed | Success:", success, "| Result:", newPart)
+        end
+    end,
+})
+
+-- ==================== UI ====================
 Tab:CreateSection("Player Selection")
 local Dropdown = Tab:CreateDropdown({
     Name = "Select Player to Copy From",
@@ -74,18 +98,20 @@ Tab:CreateSlider({ Name = "Ghost X Offset", Range = {-100, 100}, Increment = 0.0
 Tab:CreateSlider({ Name = "Ghost Y Offset", Range = {-50, 150}, Increment = 0.01, CurrentValue = ghostOffsetY, Callback = function(v) ghostOffsetY = v end })
 Tab:CreateSlider({ Name = "Ghost Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = ghostOffsetZ, Callback = function(v) ghostOffsetZ = v end })
 
+-- ==================== MAIN COPY ====================
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Real) - Fixed Rotation & Resize",
-    Description = "Creates parts + applies correct rotation + resize",
+    Name = "🔄 Copy Build (Real) - Direct Mirror",
+    Description = "Creates parts directly at mirrored position",
     Callback = function()
         if not selectedPlayer then
-            Rayfield:Notify({Title = "Error", Content = "No player selected!", Duration = 5})
-            return
+            Rayfield:Notify({Title = "Error", Content = "No player selected!"}) 
+            return 
         end
 
+        local remote = getRemote()
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
         if not sourceArea then 
-            Rayfield:Notify({Title = "Error", Content = "Source plot not found!"}) 
+            Rayfield:Notify({Title = "Error", Content = "Source plot not found"}) 
             return 
         end
 
@@ -100,11 +126,11 @@ Tab:CreateButton({
         collect(sourceBuild)
 
         if #allParts == 0 then
-            Rayfield:Notify({Title = "Error", Content = "No parts found!"}) 
+            Rayfield:Notify({Title = "Error", Content = "No parts found in source"}) 
             return 
         end
 
-        -- Source center
+        -- Calculate source center
         local sumX, sumY, sumZ = 0, 0, 0
         for _, p in ipairs(allParts) do
             local pos = p.Position
@@ -114,19 +140,15 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(realOffsetX, baseHeight + realOffsetY, realOffsetZ)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Processing " .. #allParts .. " parts...", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Creating " .. #allParts .. " parts directly at mirrored positions...", Duration = 6})
 
         local createdParts = {}
 
-        for _, sourcePart in ipairs(allParts) do
+        for i, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
+            local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
 
-            -- Full correct rotation
-            local targetRotation = sourcePart.CFrame.Rotation
-            local targetCFrame = CFrame.new(targetPos) * targetRotation
-
-            -- Part Type
             local partType = "Normal"
             local class = sourcePart.ClassName
             if class == "TrussPart" then partType = "Truss"
@@ -139,64 +161,53 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            -- 1. CreatePart (neutral position first)
+            print(string.format("[%d/%d] Creating %s at %s", i, #allParts, partType, tostring(targetPos)))
+
+            -- Create directly at target position (your requested change)
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- 2. SyncRotate - Apply exact original rotation
-                remote:InvokeServer("SyncRotate", 
-                    {{ Part = newPart, CFrame = targetCFrame }},
-                    { "AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center" }
-                )
-                task.wait(0.5)
+                -- Apply exact rotation
+                remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
+                task.wait(0.4)
 
-                -- 3. SyncMove - Final position + rotation
-                remote:InvokeServer("SyncMove", 
-                    {{ Part = newPart, CFrame = targetCFrame }},
-                    { "AlongFace", Vector3.new(), "Global", CFrame.new() }
-                )
-                task.wait(0.5)
+                -- Final move (in case creation drifted)
+                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                task.wait(0.4)
 
-                -- 4. SyncResize - Direct size set
-                remote:InvokeServer("SyncResize", 
-                    {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
-                    { "ResizeFace", Enum.NormalId.Right, 0, Vector3.new(0,0,0), "X", Vector3.xAxis, "Normal" }
-                )
-                task.wait(0.6)
+                -- Resize
+                remote:InvokeServer("SyncResize", {{Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size}}, {"ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal"})
+                task.wait(0.5)
+            else
+                warn("Failed to create part", i, partType)
             end
         end
 
-        -- Group
         if #createdParts > 0 then
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        Rayfield:Notify({Title = "Success!", Content = "Build copied with fixed rotation & resize!", Duration = 8})
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created. Check your plot.", Duration = 8})
     end,
 })
 
--- Ghost Preview (updated to match new rotation logic)
+-- Ghost Preview (same logic as real copy)
 Tab:CreateButton({
     Name = "👻 Show Ghost Preview",
     Callback = function()
         local old = Workspace:FindFirstChild("GhostPreview")
         if old then old:Destroy() end
 
-        if not selectedPlayer then 
-            Rayfield:Notify({Title="Error", Content="Select player first"}) 
-            return 
-        end
+        if not selectedPlayer then return Rayfield:Notify({Title="Error", Content="Select player"}) end
 
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
         local sourceBuild = sourceArea:WaitForChild("Build")
 
         local allParts = {}
         local function collect(obj)
-            for _, v in ipairs(obj:GetDescendants()) do
-                if v:IsA("BasePart") then table.insert(allParts, v) end
-            end
+            for _, v in ipairs(obj:GetDescendants()) do if v:IsA("BasePart") then table.insert(allParts, v) end end
         end
         collect(sourceBuild)
 
@@ -227,7 +238,7 @@ Tab:CreateButton({
             clone.Parent = ghostFolder
         end
 
-        Rayfield:Notify({Title = "Ghost Preview", Content = "Check if rotation now matches source", Duration = 6})
+        Rayfield:Notify({Title = "Ghost Preview", Content = "Check alignment & rotation", Duration = 6})
     end,
 })
 
@@ -241,4 +252,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Script Loaded", Content = "Rotation & Resize fixes applied - test on a build with rotated and differently sized parts", Duration = 8})
+Rayfield:Notify({Title = "Efficient Copier Loaded", Content = "Click TEST first, then Copy Build", Duration = 8})
