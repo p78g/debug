@@ -183,7 +183,7 @@ local function copyRealBuild()
     end
 
     local srcCentre = computeCentre(srcBA)
-    local baseY = 3 + yExtra
+    local baseY = 5 + yExtra
     local srcOrigin = srcCentre + Vector3.new(0, baseY, 0)
     local dstOrigin = dstBA.Position + Vector3.new(xOffset, baseY, zOffset)
 
@@ -240,7 +240,7 @@ local function showGhost()
     end
 
     local srcCentre = computeCentre(srcBA)
-    local baseY = 3 + yExtra
+    local baseY = 5 + yExtra
     local srcOrigin = srcCentre + Vector3.new(0, baseY, 0)
     local dstOrigin = dstBA.Position + Vector3.new(xOffset, baseY, zOffset)
 
