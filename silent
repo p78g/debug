@@ -1,33 +1,32 @@
--- // Load Iris GUI Library
+-- // Load Iris GUI Library (from x0581/Iris-Exploit-Bundle)
 local Iris = loadstring(game:HttpGet("https://raw.githubusercontent.com/x0581/Iris-Exploit-Bundle/main/bundle.lua"))().Init(game.CoreGui)
 
--- // Services & Variables
+-- // Services
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- // -------------------- Silent Aim Core (Modified) -------------------- //
-
--- Configurable settings (will be linked to the UI)
+-- // Settings (defaults)
 local Settings = {
     Enabled = true,
-    FOV_Size = 200,      -- base default
-    TargetPart = "Head", -- options: "Head", "UpperTorso", "LowerTorso", "HumanoidRootPart"
+    FOV_Size = 150,
+    TargetPart = "Head",
+    PartIndex = 1, -- 1=Head,2=UpperTorso,3=LowerTorso,4=HumanoidRootPart
 }
 
--- Visual FOV circle
+-- // Create FOV Circle UI (ScreenGui)
 local fovGui = Instance.new("ScreenGui")
 fovGui.Name = "SilentAimFOV"
 fovGui.ResetOnSpawn = false
-fovGui.IgnoreGuiInset = true
 fovGui.Parent = LocalPlayer.PlayerGui
 
 local fovCircle = Instance.new("Frame")
 fovCircle.BackgroundTransparency = 1
 fovCircle.BorderSizePixel = 0
 fovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+fovCircle.Size = UDim2.fromOffset(Settings.FOV_Size * 2, Settings.FOV_Size * 2)
 fovCircle.Parent = fovGui
 
 local corner = Instance.new("UICorner")
@@ -40,18 +39,16 @@ stroke.Thickness = 2
 stroke.Transparency = 0.4
 stroke.Parent = fovCircle
 
-local function updateFOVVisual()
+local function updateFOVCircle()
     fovCircle.Size = UDim2.fromOffset(Settings.FOV_Size * 2, Settings.FOV_Size * 2)
 end
-updateFOVVisual()
 
--- Function to get the closest target based on FOV and selected body part
+-- // Silent Aim Core (intercepts projectiles)
 local function getClosestTarget()
-    if not Settings.Enabled then return nil, nil end
+    if not Settings.Enabled then return nil end
     local mousePos = UserInputService:GetMouseLocation()
     local bestDist = Settings.FOV_Size
     local bestTarget = nil
-    local bestScreen = nil
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character then
@@ -64,18 +61,17 @@ local function getClosestTarget()
                     if dist < bestDist then
                         bestDist = dist
                         bestTarget = targetPart
-                        bestScreen = Vector2.new(screenPos.X, screenPos.Y)
                     end
                 end
             end
         end
     end
-    return bestTarget, bestScreen
+    return bestTarget
 end
 
--- Hook into the projectile system
-local ok, Projectile = pcall(require, game:GetService("ReplicatedStorage").Modules.GunFramework.Modules.Projectile)
-if ok then
+-- Hook the projectile module
+local success, Projectile = pcall(require, game:GetService("ReplicatedStorage").Modules.GunFramework.Modules.Projectile)
+if success then
     local originalNew = Projectile.new
     Projectile.new = function(params)
         if params and params.Origin and params.Direction and Settings.Enabled then
@@ -88,53 +84,60 @@ if ok then
         return originalNew(params)
     end
 else
-    warn("Projectile module not found – aimbot may not work in this game.")
+    warn("Projectile module not found – silent aim may not work.")
 end
 
--- Update FOV circle and UI dot each frame
+-- // Update FOV circle position and color each frame
 RunService.RenderStepped:Connect(function()
     local mousePos = UserInputService:GetMouseLocation()
     fovCircle.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
 
-    local target, screenPos = getClosestTarget()
-    if target and screenPos and Settings.Enabled then
-        stroke.Color = Color3.fromRGB(255, 50, 50)   -- red when a target is inside FOV
+    -- Change color if target is inside FOV
+    if getClosestTarget() and Settings.Enabled then
+        stroke.Color = Color3.fromRGB(255, 50, 50)   -- red
     else
-        stroke.Color = Color3.fromRGB(255, 255, 255) -- white when no target
+        stroke.Color = Color3.fromRGB(255, 255, 255) -- white
     end
 end)
 
--- // -------------------- Iris GUI -------------------- //
+-- // ==================== IRIS GUI ====================
+-- We need to continuously update the GUI. Use a loop.
 
-Iris:Connect(function()
-    Iris.Window({"Silent Aim Control Panel"})
-    Iris.Checkbox({"Enable Silent Aim", "Toggle aimbot on/off"}, function(state)
-        Settings.Enabled = state
-    end).state = Settings.Enabled
+local window = Iris.Window({
+    Title = "Silent Aim Control",
+    Position = UDim2.new(0.1, 0, 0.2, 0),
+    Size = UDim2.new(0, 300, 0, 250)
+})
 
-    Iris.SameLine()
-    Iris.Text({"   FOV Size"})
-    Iris.SliderNum({"", Settings.FOV_Size, 50, 400, true}, function(value)
-        Settings.FOV_Size = value
-        updateFOVVisual()
-    end)
-
-    -- Target body part dropdown
-    local partOptions = {
-        "Head",
-        "UpperTorso",
-        "LowerTorso",
-        "HumanoidRootPart"
-    }
-    local selectedIndex = 1  -- default "Head"
-    Iris.DropdownString({"Target Body Part", partOptions, selectedIndex}, function(option, idx)
-        Settings.TargetPart = option
-        selectedIndex = idx
-    end)
-
+local function drawGUI()
+    -- Enable Toggle
+    local enabledChanged
+    Settings.Enabled, enabledChanged = Iris.Toggle("Enable Silent Aim", Settings.Enabled)
+    
+    -- FOV Slider
+    local fovChanged
+    Settings.FOV_Size, fovChanged = Iris.Slider("FOV Radius", Settings.FOV_Size, 50, 400, true)
+    if fovChanged then updateFOVCircle() end
+    
+    -- Target Body Part Dropdown
+    local parts = {"Head", "UpperTorso", "LowerTorso", "HumanoidRootPart"}
+    local partChanged
+    Settings.PartIndex, partChanged = Iris.Dropdown("Target Body Part", parts, Settings.PartIndex)
+    if partChanged then
+        Settings.TargetPart = parts[Settings.PartIndex]
+    end
+    
+    -- A separator line
     Iris.Separator()
-    Iris.Text({"FOV Circle Color: Red = target inside, White = no target"})
-    Iris.End()
-end)
+    Iris.Text("FOV Circle: Red = target inside, White = none")
+end
 
-print("Silent aim script loaded! Use the Iris GUI to control it.")
+-- Main GUI update loop
+while Iris.Enabled do
+    Iris.Begin()
+    if window then
+        Iris.WindowContent(window, drawGUI)
+    end
+    Iris.End()
+    task.wait() -- adjust if needed
+end
