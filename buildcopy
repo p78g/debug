@@ -1,5 +1,5 @@
 -- =============================================
--- BUILD COPIER – Remote Calls with Manual Offsets
+-- BUILD COPIER – Pure Remote Calls + Ghost Preview
 -- =============================================
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
@@ -11,15 +11,16 @@ local Window = Rayfield:CreateWindow({
 })
 
 local MainTab = Window:CreateTab("Copy Build")
-MainTab:CreateSection("Manual Offsets (studs)")
+MainTab:CreateSection("Alignment Offsets (studs)")
 
-local xOffset = 0
-local zOffset = 0
-local yExtra = 0
+-- Offsets that YOU control
+local xOffset = 0      -- left/right
+local zOffset = 0      -- front/back
+local yExtra = 0       -- up/down (added to the default 3)
 
 MainTab:CreateSlider({ Name = "X Offset (left/right)", Range = {-100, 100}, Increment = 1, CurrentValue = 0, Callback = function(v) xOffset = v end })
 MainTab:CreateSlider({ Name = "Z Offset (forward/back)", Range = {-100, 100}, Increment = 1, CurrentValue = 0, Callback = function(v) zOffset = v end })
-MainTab:CreateSlider({ Name = "Extra Y Offset (up/down)", Range = {-10, 10}, Increment = 0.5, CurrentValue = 0, Callback = function(v) yExtra = v end })
+MainTab:CreateSlider({ Name = "Extra Y Offset", Range = {-10, 10}, Increment = 0.5, CurrentValue = 0, Callback = function(v) yExtra = v end })
 
 MainTab:CreateSection("Player Selection")
 
@@ -27,11 +28,13 @@ local selectedPlayer = nil
 local playerMapping = {}
 local dropdown = nil
 
+-- Helper: get a BuildArea object
 local function getBuildArea(folderName)
     local pa = workspace:FindFirstChild("Private Building Areas")
     return pa and pa:FindFirstChild(folderName)
 end
 
+-- Refresh the dropdown list
 local function refreshPlayers()
     local pa = workspace:FindFirstChild("Private Building Areas")
     if not pa then return {} end
@@ -48,16 +51,19 @@ local function refreshPlayers()
     return opts
 end
 
+-- Clear your local Build folder (using Destroy, not remote)
 local function clearLocalBuild()
     local localName = game.Players.LocalPlayer.Name .. "BuildArea"
     local localBA = getBuildArea(localName)
     if localBA and localBA:FindFirstChild("Build") then
         for _, p in ipairs(localBA.Build:GetChildren()) do p:Destroy() end
-        Rayfield:Notify({ Title = "Cleared", Content = "Your build folder emptied." })
+        Rayfield:Notify({ Title = "Cleared", Content = "Your Build folder emptied." })
+    else
+        Rayfield:Notify({ Title = "Warning", Content = "Could not find your Build folder." })
     end
 end
 
--- Compute average centre of all parts in source Build (recursive)
+-- Compute average centre of all BaseParts inside a BuildArea (recursive)
 local function computeCentre(buildArea)
     local buildFolder = buildArea:FindFirstChild("Build")
     if not buildFolder then return buildArea.Position end
@@ -78,7 +84,7 @@ local function computeCentre(buildArea)
     return sum / #parts
 end
 
--- Remote access
+-- Get the remote endpoint once
 local remote = nil
 local function getRemote()
     if remote then return remote end
@@ -92,14 +98,17 @@ local function getRemote()
     return remote
 end
 
--- Copy a single part using exact remote structures
+-- Copy a single part using the EXACT remote structures (from your logs)
 local function copySinglePart(part, srcOrigin, dstOrigin, dstBuild)
+    -- Map part name to type string
     local typeMap = {
         Part = "Normal", Truss = "Truss", Wedge = "Wedge", Corner = "Corner",
         Cylinder = "Cylinder", Ball = "Ball", Seat = "Seat",
         ["Vehicle Seat"] = "Vehicle Seat", Spawn = "Spawn"
     }
     local partType = typeMap[part.Name] or "Normal"
+
+    -- Offset and target position/CFrame
     local offset = part.Position - srcOrigin
     local targetPos = dstOrigin + offset
     local targetCFrame = CFrame.new(targetPos) * (part.CFrame - part.CFrame.Position)
@@ -107,61 +116,72 @@ local function copySinglePart(part, srcOrigin, dstOrigin, dstBuild)
     local r = getRemote()
     if not r then return nil end
 
-    -- 1. Create part at destination origin
+    -- 1. Create part at the destination origin (centre of your plot, plus offsets)
     local createArgs = {"CreatePart", partType, CFrame.new(dstOrigin), dstBuild}
     local ok, newPart = pcall(function() return r:InvokeServer(unpack(createArgs)) end)
-    if not ok or not newPart then return nil end
+    if not ok or not newPart then
+        warn("CreatePart failed for", part.Name)
+        return nil
+    end
     task.wait(0.1)
 
-    local actual = newPart
-    if not actual:IsA("BasePart") then actual = dstBuild:FindFirstChild(part.Name) end
-    if not actual then return nil end
+    -- Locate the actual part in the build folder (sometimes InvokeServer returns a different value)
+    local actualPart = newPart
+    if not actualPart:IsA("BasePart") then
+        actualPart = dstBuild:FindFirstChild(part.Name)
+    end
+    if not actualPart then
+        warn("Could not locate created part:", part.Name)
+        return nil
+    end
 
-    -- 2. Rotate
+    -- 2. Rotate – exactly as in your raw example
     local pivotCFrame = targetCFrame - targetCFrame.Position
     local currentCFrame = CFrame.new(dstOrigin)
     local rotArgs = {
         "SyncRotate",
-        { { Part = actual, CFrame = targetCFrame } },
+        { { Part = actualPart, CFrame = targetCFrame } },
         { "AroundPivot", pivotCFrame, "Center", currentCFrame, "Center" }
     }
     pcall(function() r:InvokeServer(unpack(rotArgs)) end)
     task.wait(0.1)
 
-    -- 3. Move
+    -- 3. Move – exactly as in your raw example
     local delta = targetPos - dstOrigin
     local moveArgs = {
         "SyncMove",
-        { { Part = actual, CFrame = CFrame.new(targetPos) } },
+        { { Part = actualPart, CFrame = CFrame.new(targetPos) } },
         { "AlongFace", delta, "Global", CFrame.new(targetPos) }
     }
     pcall(function() r:InvokeServer(unpack(moveArgs)) end)
     task.wait(0.1)
 
-    -- 4. Resize
+    -- 4. Resize – adapted from your raw example
     local resizeArgs = {
         "SyncResize",
-        { { Part = actual, CFrame = CFrame.new(targetPos), Size = part.Size } },
+        { { Part = actualPart, CFrame = CFrame.new(targetPos), Size = part.Size } },
         { "ResizeFace", Enum.NormalId.Front, 1, Vector3.new(0,0,0), "Z", part.Size, "Normal" }
     }
     pcall(function() r:InvokeServer(unpack(resizeArgs)) end)
 
-    return actual
+    return actualPart
 end
 
--- Copy a test part (first part found)
-local function testCopyOne()
+-- Copy the entire build (recursively through all models)
+local function copyRealBuild()
     if not selectedPlayer then
-        Rayfield:Notify({ Title = "Error", Content = "Select a player." })
+        Rayfield:Notify({ Title = "Error", Content = "Select a player first." })
         return
     end
+
     local srcFolder = playerMapping[selectedPlayer]
     local srcBA = getBuildArea(srcFolder)
     local dstBA = getBuildArea(game.Players.LocalPlayer.Name .. "BuildArea")
     if not srcBA or not dstBA then
-        Rayfield:Notify({ Title = "Error", Content = "BuildAreas missing." })
+        Rayfield:Notify({ Title = "Error", Content = "BuildAreas not found." })
         return
     end
+
     local srcBuild = srcBA:FindFirstChild("Build")
     local dstBuild = dstBA:FindFirstChild("Build")
     if not srcBuild or not dstBuild then
@@ -169,73 +189,13 @@ local function testCopyOne()
         return
     end
 
-    -- Find first part
-    local testPart = nil
-    local function findFirstPart(obj)
-        for _, child in ipairs(obj:GetChildren()) do
-            if child:IsA("BasePart") then
-                testPart = child
-                return true
-            elseif child:IsA("Model") then
-                if findFirstPart(child) then return true end
-            end
-        end
-        return false
-    end
-    findFirstPart(srcBuild)
-    if not testPart then
-        Rayfield:Notify({ Title = "Error", Content = "No parts found." })
-        return
-    end
-
+    -- Compute source centre (auto) and apply manual offsets
     local srcCentre = computeCentre(srcBA)
     local baseY = 3 + yExtra
     local srcOrigin = srcCentre + Vector3.new(0, baseY, 0)
     local dstOrigin = dstBA.Position + Vector3.new(xOffset, baseY, zOffset)
 
-    clearLocalBuild()  -- clear before test
-    local newPart = copySinglePart(testPart, srcOrigin, dstOrigin, dstBuild)
-    if newPart then
-        Rayfield:Notify({ Title = "Test", Content = "Part created. Check its position/rotation/size." })
-        -- place a marker at target position
-        local marker = Instance.new("Part")
-        marker.Size = Vector3.new(0.5,0.5,0.5)
-        marker.Color = Color3.fromRGB(0,255,0)
-        marker.Position = dstOrigin + (testPart.Position - srcOrigin)
-        marker.Anchored = true
-        marker.Parent = workspace
-        game:GetService("Debris"):AddItem(marker, 5)
-    else
-        Rayfield:Notify({ Title = "Test Failed", Content = "Could not copy part." })
-    end
-end
-
--- Copy full build
-local function copyReal()
-    if not selectedPlayer then
-        Rayfield:Notify({ Title = "Error", Content = "Select a player." })
-        return
-    end
-    local srcFolder = playerMapping[selectedPlayer]
-    local srcBA = getBuildArea(srcFolder)
-    local dstBA = getBuildArea(game.Players.LocalPlayer.Name .. "BuildArea")
-    if not srcBA or not dstBA then
-        Rayfield:Notify({ Title = "Error", Content = "BuildAreas missing." })
-        return
-    end
-    local srcBuild = srcBA:FindFirstChild("Build")
-    local dstBuild = dstBA:FindFirstChild("Build")
-    if not srcBuild or not dstBuild then
-        Rayfield:Notify({ Title = "Error", Content = "Build folders missing." })
-        return
-    end
-
-    local srcCentre = computeCentre(srcBA)
-    local baseY = 3 + yExtra
-    local srcOrigin = srcCentre + Vector3.new(0, baseY, 0)
-    local dstOrigin = dstBA.Position + Vector3.new(xOffset, baseY, zOffset)
-
-    -- Collect all parts
+    -- Collect every BasePart from the source (flatten models)
     local allParts = {}
     local function collect(obj)
         for _, child in ipairs(obj:GetChildren()) do
@@ -248,25 +208,27 @@ local function copyReal()
     end
     collect(srcBuild)
     if #allParts == 0 then
-        Rayfield:Notify({ Title = "Info", Content = "No parts found." })
+        Rayfield:Notify({ Title = "Info", Content = "No parts found to copy." })
         return
     end
 
+    -- Clear your existing build before copying
     clearLocalBuild()
     task.wait(0.5)
 
     Rayfield:Notify({ Title = "Copying", Content = #allParts .. " parts..." })
-    local success = 0
+    local successCount = 0
     for _, part in ipairs(allParts) do
         if copySinglePart(part, srcOrigin, dstOrigin, dstBuild) then
-            success = success + 1
+            successCount = successCount + 1
         end
-        task.wait(0.05)
+        task.wait(0.05)   -- small delay to avoid flooding the server
     end
-    Rayfield:Notify({ Title = "Done", Content = success .. "/" .. #allParts .. " parts copied." })
+
+    Rayfield:Notify({ Title = "Complete", Content = successCount .. "/" .. #allParts .. " parts copied." })
 end
 
--- Ghost preview (same logic as remote but visual)
+-- Ghost preview (direct clones, no remotes – only for visual alignment)
 local ghostModel = nil
 local function showGhost()
     if ghostModel then ghostModel:Destroy() end
@@ -274,13 +236,15 @@ local function showGhost()
         Rayfield:Notify({ Title = "Error", Content = "Select a player." })
         return
     end
+
     local srcFolder = playerMapping[selectedPlayer]
     local srcBA = getBuildArea(srcFolder)
     local dstBA = getBuildArea(game.Players.LocalPlayer.Name .. "BuildArea")
     if not srcBA or not dstBA then
-        Rayfield:Notify({ Title = "Error", Content = "BuildAreas missing." })
+        Rayfield:Notify({ Title = "Error", Content = "BuildAreas not found." })
         return
     end
+
     local srcBuild = srcBA:FindFirstChild("Build")
     if not srcBuild then
         Rayfield:Notify({ Title = "Error", Content = "Source has no Build folder." })
@@ -293,7 +257,7 @@ local function showGhost()
     local dstOrigin = dstBA.Position + Vector3.new(xOffset, baseY, zOffset)
 
     ghostModel = Instance.new("Model")
-    ghostModel.Name = "BuildGhost"
+    ghostModel.Name = "GhostPreview"
 
     local function cloneParts(obj)
         for _, child in ipairs(obj:GetChildren()) do
@@ -315,14 +279,14 @@ local function showGhost()
     end
     cloneParts(srcBuild)
     ghostModel.Parent = workspace
-    Rayfield:Notify({ Title = "Ghost", Content = "Use offsets to align. Test with single part." })
+    Rayfield:Notify({ Title = "Ghost Preview", Content = "Adjust offsets until aligned." })
 end
 
 local function hideGhost()
     if ghostModel then ghostModel:Destroy() end
 end
 
--- Build UI
+-- Build the UI
 local initOpts = refreshPlayers()
 dropdown = MainTab:CreateDropdown({
     Name = "Select Player",
@@ -335,12 +299,11 @@ if initOpts[1] then selectedPlayer = initOpts[1] end
 MainTab:CreateButton({ Name = "Clear Your Build", Callback = clearLocalBuild })
 MainTab:CreateButton({ Name = "Show Ghost Preview", Callback = showGhost })
 MainTab:CreateButton({ Name = "Hide Ghost", Callback = hideGhost })
-MainTab:CreateButton({ Name = "Test Copy One Part", Callback = testCopyOne })
-MainTab:CreateButton({ Name = "Copy Full Build (Remote)", Callback = copyReal })
+MainTab:CreateButton({ Name = "Copy Real Build (Remote)", Callback = copyRealBuild })
 MainTab:CreateButton({ Name = "Refresh Players", Callback = function()
     local newOpts = refreshPlayers()
     dropdown:SetOptions(newOpts)
     if newOpts[1] then dropdown:SetValue(newOpts[1]); selectedPlayer = newOpts[1] end
 end })
 
-Rayfield:Notify({ Title = "Ready", Content = "Adjust offsets, show ghost, test one part, then copy all." })
+Rayfield:Notify({ Title = "Ready", Content = "Adjust offsets, show ghost, then copy real build." })
