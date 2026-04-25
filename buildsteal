@@ -1,10 +1,10 @@
--- Town Build Copier - Exact Relative Positioning + Resize First → Rotate → Move
+-- Town Build Copier - Final Version
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Copier - Exact Positioning",
-    LoadingTitle = "Loading...",
+    Name = "Town Plot Copier",   -- Changed name
+    LoadingTitle = "Loading Copier...",
     Theme = "Default"
 })
 
@@ -62,8 +62,8 @@ Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, Current
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Exact Relative + Resize First)",
-    Description = "Resize → Rotate → Move | Exact relative positioning",
+    Name = "🔄 Copy Build",
+    Description = "Resize → Rotate → Move | Height = 4",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -92,7 +92,6 @@ Tab:CreateButton({
             return
         end
 
-        -- Calculate source center
         local sumX, sumY, sumZ = 0, 0, 0
         for _, p in ipairs(allParts) do
             local pos = p.Position
@@ -102,7 +101,7 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Resize first → Rotate → Move", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Processing build...", Duration = 6})
 
         local createdParts = {}
 
@@ -123,24 +122,23 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            -- Create Part
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- 1. Resize First (using the logic you said worked)
+                -- Resize First
                 remote:InvokeServer("SyncResize",
                     {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
                     { "ResizeFace", Enum.NormalId.Right, sourcePart.Size.X - newPart.Size.X, Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), "X", Vector3.xAxis, "Normal" }
                 )
                 task.wait(0.5)
 
-                -- 2. Rotate
+                -- Rotate
                 remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
                 task.wait(0.5)
 
-                -- 3. Move (final positioning)
+                -- Move
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
                 task.wait(0.5)
             end
@@ -159,4 +157,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Resize first → Rotate → Move | Height = 4", Duration = 8})
+Rayfield:Notify({Title = "Town Plot Copier", Content = "Ready - Select player and copy", Duration = 8})
