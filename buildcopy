@@ -1,9 +1,9 @@
--- Town Build Copier - Exact SyncRotate from your log + Height + Resize
+-- Town Build Copier - Resize Working + Rotation Fix Attempt 2
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Copier - Exact Rotation Fix",
+    Name = "Town Copier - Rotation Fix",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -62,8 +62,8 @@ Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, Current
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build - Exact SyncRotate",
-    Description = "Using your exact SyncRotate structure",
+    Name = "🔄 Copy Build - Rotation Fix",
+    Description = "Resize working | Trying better rotation",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player!"}) 
@@ -98,7 +98,7 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Using exact SyncRotate from your log...", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Applying improved rotation...", Duration = 6})
 
         local createdParts = {}
 
@@ -106,7 +106,6 @@ Tab:CreateButton({
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
 
-            -- Full target CFrame with correct rotation
             local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
 
             local partType = "Normal"
@@ -126,35 +125,25 @@ Tab:CreateButton({
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- === EXACT SYNCROTATE FROM YOUR LOG ===
-                local rotateArgs = {
-                    "SyncRotate",
-                    {
-                        {
-                            Part = newPart,
-                            CFrame = targetCFrame
-                        }
-                    },
-                    {
-                        "AroundPivot",
-                        CFrame.new(0, 0, 0, targetCFrame.XVector.X, targetCFrame.XVector.Y, targetCFrame.XVector.Z, 
-                                   targetCFrame.YVector.X, targetCFrame.YVector.Y, targetCFrame.YVector.Z, 
-                                   targetCFrame.ZVector.X, targetCFrame.ZVector.Y, targetCFrame.ZVector.Z),
-                        "Center",
-                        CFrame.new(targetPos.X, targetPos.Y, targetPos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1),
-                        "Center"
-                    }
-                }
-                remote:InvokeServer(unpack(rotateArgs))
-
+                -- Improved Rotation Call
+                remote:InvokeServer("SyncRotate", 
+                    {{ Part = newPart, CFrame = targetCFrame }},
+                    { "World", CFrame.new(), "Center", CFrame.new(), "Center" }
+                )
                 task.wait(0.5)
 
                 -- Move
-                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                remote:InvokeServer("SyncMove", 
+                    {{ Part = newPart, CFrame = targetCFrame }},
+                    { "AlongFace", Vector3.new(), "Global", CFrame.new() }
+                )
                 task.wait(0.5)
 
-                -- Resize
-                remote:InvokeServer("SyncResize", {{Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size}}, {"ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal"})
+                -- Resize (keep what worked)
+                remote:InvokeServer("SyncResize", 
+                    {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
+                    { "ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal" }
+                )
                 task.wait(0.6)
             end
         end
@@ -163,13 +152,13 @@ Tab:CreateButton({
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 8})
+        Rayfield:Notify({Title = "Done", Content = #createdParts .. " parts created", Duration = 8})
     end,
 })
 
-Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
+Tab:CreateButton({ Name = "Refresh List", Callback = function()
     refreshPlayers()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Exact SyncRotate Applied", Content = "Using your provided rotation structure", Duration = 8})
+Rayfield:Notify({Title = "Rotation Fix Loaded", Content = "Changed SyncRotate mode to 'World'", Duration = 8})
