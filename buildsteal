@@ -1,4 +1,4 @@
--- Town Build Copier - Safe Base Detection + Center + Sides
+-- Town Build Copier - Exact SyncRotate (Your Latest Examples)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -62,8 +62,8 @@ Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, Current
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Safe Center + Sides)",
-    Description = "Fixed base detection + center/sides measurement",
+    Name = "🔄 Copy Build (Exact Rotation)",
+    Description = "Using your exact SyncRotate examples",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -79,49 +79,35 @@ Tab:CreateButton({
 
         local sourceBuild = sourceArea:WaitForChild("Build")
 
-        -- Safe way to find the plot base
-        local sourceBase = nil
-        for _, v in ipairs(sourceArea:GetChildren()) do
-            if v:IsA("BasePart") and v.Size.Y < 5 then  -- the flat plot base
-                sourceBase = v
-                break
-            end
-        end
-
-        if not sourceBase then
-            Rayfield:Notify({Title = "Error", Content = "Could not find source plot base"}) 
-            return 
-        end
-
         local allParts = {}
         local function collect(obj)
             for _, v in ipairs(obj:GetDescendants()) do
-                if v:IsA("BasePart") and v ~= sourceBase then
-                    table.insert(allParts, v)
-                end
+                if v:IsA("BasePart") then table.insert(allParts, v) end
             end
         end
         collect(sourceBuild)
 
         if #allParts == 0 then
-            Rayfield:Notify({Title = "Error", Content = "No parts found in build"}) 
+            Rayfield:Notify({Title = "Error", Content = "No parts found"}) 
             return 
         end
 
-        -- Center + Sides measurement
-        local sourceCenter = sourceBase.Position
-        local destCenter = localBuildArea.Position
+        local sumX, sumY, sumZ = 0, 0, 0
+        for _, p in ipairs(allParts) do
+            local pos = p.Position
+            sumX += pos.X; sumY += pos.Y; sumZ += pos.Z
+        end
+        local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
 
-        local centerOffset = destCenter - sourceCenter + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
+        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Safe center + sides method", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Using your exact rotation remotes...", Duration = 6})
 
         local createdParts = {}
 
         for _, sourcePart in ipairs(allParts) do
-            local relativePos = sourcePart.Position - sourceCenter
-            local targetPos = destCenter + relativePos + centerOffset
-
+            local offset = sourcePart.Position - sourceCenter
+            local targetPos = destOrigin + offset
             local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
 
             local partType = "Normal"
@@ -148,7 +134,7 @@ Tab:CreateButton({
                 )
                 task.wait(0.4)
 
-                -- Exact Rotate (0 degree version)
+                -- Exact SyncRotate (your "0 degree" / sideways version)
                 remote:InvokeServer("SyncRotate",
                     {{ Part = newPart, CFrame = targetCFrame }},
                     {
@@ -156,9 +142,9 @@ Tab:CreateButton({
                         CFrame.new(0, 0, 0, targetCFrame.XVector.X, targetCFrame.XVector.Y, targetCFrame.XVector.Z,
                                    targetCFrame.YVector.X, targetCFrame.YVector.Y, targetCFrame.YVector.Z,
                                    targetCFrame.ZVector.X, targetCFrame.ZVector.Y, targetCFrame.ZVector.Z),
-                        "Center",
+                        "Local",
                         CFrame.new(targetPos.X, targetPos.Y, targetPos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1),
-                        "Center"
+                        "Local"
                     }
                 )
                 task.wait(0.4)
@@ -182,4 +168,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Safe Version Loaded", Content = "Fixed base detection + center + sides", Duration = 8})
+Rayfield:Notify({Title = "Exact Rotation Loaded", Content = "Using your provided SyncRotate (AroundPivot + Local)", Duration = 8})
