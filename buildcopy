@@ -1,0 +1,302 @@
+-- Load Rayfield UI Library
+local Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/init.lua"))()
+
+-- Create the main window
+local Window = Rayfield:CreateWindow({
+    Name = "Build Copier",
+    LoadingTitle = "Loading...",
+    LoadingSubtitle = "Please wait",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "BuildCopier",
+        FileName = "Settings"
+    }
+})
+
+-- Create a tab for the copying feature
+local MainTab = Window:CreateTab("Copy Build")
+
+-- Create a section for the dropdown and button
+local CopySection = MainTab:CreateSection("Select Player Build")
+
+-- Variables
+local Dropdown = nil
+local playerOptions = {}
+local playerMapping = {} -- maps display name to actual folder name
+
+-- Function to refresh the dropdown list of players
+local function refreshPlayerList()
+    local privateArea = workspace:FindFirstChild("Private Building Areas")
+    if not privateArea then
+        Rayfield:Notify({
+            Title = "Error",
+            Content = "Private Building Areas not found!",
+            Duration = 5
+        })
+        return {}
+    end
+    
+    local options = {}
+    playerMapping = {}
+    for _, child in ipairs(privateArea:GetChildren()) do
+        local name = child.Name
+        -- Check if name ends with "BuildArea"
+        if string.sub(name, -9) == "BuildArea" then
+            local playerName = string.sub(name, 1, -10) -- remove "BuildArea"
+            options[#options+1] = playerName
+            playerMapping[playerName] = name
+        end
+    end
+    
+    return options
+end
+
+-- Function to get the plot part (assuming it's a BasePart)
+local function getPlotPart(plotFolderName)
+    local privateArea = workspace:FindFirstChild("Private Building Areas")
+    if not privateArea then return nil end
+    local plot = privateArea:FindFirstChild(plotFolderName)
+    if plot and plot:IsA("BasePart") then
+        return plot
+    elseif plot and plot:IsA("Model") and plot.PrimaryPart then
+        return plot.PrimaryPart
+    else
+        -- Fallback: try to find any part inside
+        for _, child in ipairs(plot:GetChildren()) do
+            if child:IsA("BasePart") then
+                return child
+            end
+        end
+    end
+    return nil
+end
+
+-- Function to copy a single part
+local function copyPart(sourcePart, sourcePlotPart, localPlotPart, buildFolder)
+    -- Determine part type
+    local partType = nil
+    local partName = sourcePart.Name
+    if partName == "Part" then partType = "Normal"
+    elseif partName == "Truss" then partType = "Truss"
+    elseif partName == "Wedge" then partType = "Wedge"
+    elseif partName == "Corner" then partType = "Corner"
+    elseif partName == "Cylinder" then partType = "Cylinder"
+    elseif partName == "Ball" then partType = "Ball"
+    elseif partName == "Seat" then partType = "Seat"
+    elseif partName == "Vehicle Seat" then partType = "Vehicle Seat"
+    elseif partName == "Spawn" then partType = "Spawn"
+    else
+        -- Unknown type, treat as Normal
+        partType = "Normal"
+    end
+    
+    -- Compute origins (build surface is 3 studs above plot part)
+    local sourceOrigin = sourcePlotPart.Position + Vector3.new(0, 3, 0)
+    local localOrigin = localPlotPart.Position + Vector3.new(0, 3, 0)
+    
+    -- Compute relative position offset
+    local relativePos = sourcePart.Position - sourceOrigin
+    local targetPos = localOrigin + relativePos
+    
+    -- Compute relative rotation (preserve orientation relative to world axes)
+    -- Since plots are axis-aligned, we simply copy the source part's CFrame but adjust position
+    local sourceCFrame = sourcePart.CFrame
+    local targetCFrame = CFrame.new(targetPos) * (sourceCFrame - sourceCFrame.Position)
+    
+    -- Step 1: Create the part at the local plot center temporarily
+    local tempCenterCFrame = CFrame.new(localOrigin)
+    local syncAPI = game:GetService("Players").LocalPlayer.Character:WaitForChild("Building Tools"):WaitForChild("SyncAPI"):WaitForChild("ServerEndpoint")
+    
+    local createArgs = {
+        "CreatePart",
+        partType,
+        tempCenterCFrame,
+        buildFolder
+    }
+    local newPart = syncAPI:InvokeServer(unpack(createArgs))
+    
+    if not newPart or not newPart:IsA("BasePart") then
+        warn("Failed to create part, trying to locate by name...")
+        -- Fallback: find the newly created part in the build folder by name and type
+        for _, child in ipairs(buildFolder:GetChildren()) do
+            if child:IsA("BasePart") and child.Name == sourcePart.Name then
+                newPart = child
+                break
+            end
+        end
+        if not newPart then return end
+    end
+    
+    -- Step 2: Apply rotation
+    local rotateArgs = {
+        "SyncRotate",
+        {
+            {
+                Part = newPart,
+                CFrame = targetCFrame
+            }
+        },
+        {
+            "AroundPivot",
+            CFrame.new(targetPos),
+            "Center",
+            CFrame.new(targetPos),
+            "Center"
+        }
+    }
+    syncAPI:InvokeServer(unpack(rotateArgs))
+    
+    -- Step 3: Apply movement (should now be at correct position after rotation, but we'll ensure)
+    local moveArgs = {
+        "SyncMove",
+        {
+            {
+                Part = newPart,
+                CFrame = targetCFrame
+            }
+        },
+        {
+            "AlongFace",
+            Vector3.new(0,0,0), -- dummy vector
+            "Global",
+            targetCFrame
+        }
+    }
+    syncAPI:InvokeServer(unpack(moveArgs))
+    
+    -- Step 4: Resize to match source part size
+    local sourceSize = sourcePart.Size
+    local resizeArgs = {
+        "SyncResize",
+        {
+            {
+                Part = newPart,
+                CFrame = targetCFrame,
+                Size = sourceSize
+            }
+        },
+        {
+            "ResizeFace",
+            Enum.NormalId.Front,
+            1,
+            Vector3.zAxis,
+            "Z",
+            sourceSize,
+            "Normal"
+        }
+    }
+    syncAPI:InvokeServer(unpack(resizeArgs))
+end
+
+-- Function to copy the entire build
+local function copyBuild(selectedPlayerName)
+    local privateArea = workspace:FindFirstChild("Private Building Areas")
+    if not privateArea then
+        Rayfield:Notify({Title = "Error", Content = "Private Building Areas not found!", Duration = 5})
+        return
+    end
+    
+    local sourceFolderName = playerMapping[selectedPlayerName]
+    local sourceBuildArea = privateArea:FindFirstChild(sourceFolderName)
+    if not sourceBuildArea then
+        Rayfield:Notify({Title = "Error", Content = "Source build area not found!", Duration = 5})
+        return
+    end
+    
+    local sourcePlotPart = getPlotPart(sourceFolderName)
+    if not sourcePlotPart then
+        Rayfield:Notify({Title = "Error", Content = "Could not determine source plot center!", Duration = 5})
+        return
+    end
+    
+    -- Local player build area
+    local localPlayerName = game.Players.LocalPlayer.Name
+    local localFolderName = localPlayerName .. "BuildArea"
+    local localBuildArea = privateArea:FindFirstChild(localFolderName)
+    if not localBuildArea then
+        Rayfield:Notify({Title = "Error", Content = "Your build area not found!", Duration = 5})
+        return
+    end
+    
+    local localPlotPart = getPlotPart(localFolderName)
+    if not localPlotPart then
+        Rayfield:Notify({Title = "Error", Content = "Could not determine your plot center!", Duration = 5})
+        return
+    end
+    
+    local sourceBuildFolder = sourceBuildArea:FindFirstChild("Build")
+    if not sourceBuildFolder then
+        Rayfield:Notify({Title = "Error", Content = "Source has no Build folder!", Duration = 5})
+        return
+    end
+    
+    local localBuildFolder = localBuildArea:FindFirstChild("Build")
+    if not localBuildFolder then
+        Rayfield:Notify({Title = "Error", Content = "Your build area has no Build folder!", Duration = 5})
+        return
+    end
+    
+    -- Get all parts from source
+    local parts = sourceBuildFolder:GetChildren()
+    local total = #parts
+    if total == 0 then
+        Rayfield:Notify({Title = "Info", Content = "No parts found in source build.", Duration = 5})
+        return
+    end
+    
+    Rayfield:Notify({Title = "Copying", Content = "Starting copy of " .. total .. " parts...", Duration = 3})
+    
+    for i, part in ipairs(parts) do
+        if part:IsA("BasePart") then
+            copyPart(part, sourcePlotPart, localPlotPart, localBuildFolder)
+            task.wait(0.05) -- small delay to avoid overwhelming server
+        end
+    end
+    
+    Rayfield:Notify({Title = "Success", Content = "Build copied successfully!", Duration = 5})
+end
+
+-- Create the dropdown and button
+local function setupUI()
+    local options = refreshPlayerList()
+    if #options == 0 then
+        Rayfield:Notify({Title = "Warning", Content = "No player build areas found.", Duration = 5})
+    end
+    
+    Dropdown = CopySection:CreateDropdown({
+        Name = "Select Player",
+        Options = options,
+        CurrentOption = options[1] or "",
+        Callback = function(option)
+            -- Selection stored
+        end
+    })
+    
+    CopySection:CreateButton({
+        Name = "Copy Build",
+        Callback = function()
+            local selected = Dropdown.CurrentOption
+            if selected and selected ~= "" then
+                copyBuild(selected)
+            else
+                Rayfield:Notify({Title = "Error", Content = "Please select a player first.", Duration = 3})
+            end
+        end
+    })
+    
+    -- Refresh button
+    CopySection:CreateButton({
+        Name = "Refresh Player List",
+        Callback = function()
+            local newOptions = refreshPlayerList()
+            Dropdown:SetOptions(newOptions)
+            if #newOptions > 0 then
+                Dropdown:SetValue(newOptions[1])
+            end
+            Rayfield:Notify({Title = "Refreshed", Content = "Player list updated.", Duration = 2})
+        end
+    })
+end
+
+-- Initialize UI
+setupUI()
