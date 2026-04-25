@@ -1,11 +1,6 @@
--- // Destroy any leftover Iris GUI (to prevent conflicts)
-pcall(function()
-    local irisGui = game.CoreGui:FindFirstChild("Iris")
-    if irisGui then irisGui:Destroy() end
-end)
-
--- // Load Rayfield
-local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/shlexware/Rayfield/main/source'))()
+-- // Load Rayfield properly
+local Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Rayfield/main/source"))()
+assert(Rayfield, "Rayfield failed to load")
 
 -- // Services
 local Players = game:GetService("Players")
@@ -21,11 +16,13 @@ local Settings = {
     TargetPart = "Head",
 }
 
+print("Silent Aim script started")
+
 -- // Create FOV Circle UI
 local fovGui = Instance.new("ScreenGui")
 fovGui.Name = "SilentAimFOV"
 fovGui.ResetOnSpawn = false
-fovGui.Parent = LocalPlayer.PlayerGui
+fovGui.Parent = game:GetService("CoreGui")  -- Use CoreGui to avoid game restrictions
 
 local fovCircle = Instance.new("Frame")
 fovCircle.BackgroundTransparency = 1
@@ -48,7 +45,7 @@ local function updateFOVCircle()
     fovCircle.Size = UDim2.fromOffset(Settings.FOV_Size * 2, Settings.FOV_Size * 2)
 end
 
--- // Silent Aim Core
+-- // Silent Aim Core (matches the raw script's logic)
 local function getClosestTarget()
     if not Settings.Enabled then return nil end
     local mousePos = UserInputService:GetMouseLocation()
@@ -74,25 +71,35 @@ local function getClosestTarget()
     return bestTarget
 end
 
--- Hook the projectile module
+-- Hook the projectile module (as in the original script)
 local function hookProjectile()
-    local success, Projectile = pcall(require, game:GetService("ReplicatedStorage").Modules.GunFramework.Modules.Projectile)
-    if success then
-        local originalNew = Projectile.new
-        Projectile.new = function(params)
-            if params and params.Origin and params.Direction and Settings.Enabled then
-                local target = getClosestTarget()
-                if target then
-                    local newDir = (target.Position - params.Origin).Unit
-                    params.Direction = newDir
+    local replicatedStorage = game:GetService("ReplicatedStorage")
+    local modulePath = replicatedStorage:FindFirstChild("Modules")
+    if modulePath then
+        modulePath = modulePath:FindFirstChild("GunFramework")
+        if modulePath then
+            modulePath = modulePath:FindFirstChild("Modules")
+            if modulePath then
+                local success, Projectile = pcall(require, modulePath.Projectile)
+                if success and Projectile then
+                    local originalNew = Projectile.new
+                    Projectile.new = function(params)
+                        if params and params.Origin and params.Direction and Settings.Enabled then
+                            local target = getClosestTarget()
+                            if target then
+                                local newDir = (target.Position - params.Origin).Unit
+                                params.Direction = newDir
+                            end
+                        end
+                        return originalNew(params)
+                    end
+                    print("[Silent Aim] Hooked successfully!")
+                    return
                 end
             end
-            return originalNew(params)
         end
-        print("[Silent Aim] Hooked successfully!")
-    else
-        warn("[Silent Aim] Projectile module not found – aimbot will not work.")
     end
+    warn("[Silent Aim] Could not find Projectile module. Aim may not work.")
 end
 hookProjectile()
 
@@ -102,39 +109,46 @@ RunService.RenderStepped:Connect(function()
     fovCircle.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
 
     if getClosestTarget() and Settings.Enabled then
-        stroke.Color = Color3.fromRGB(255, 50, 50)   -- red
+        stroke.Color = Color3.fromRGB(255, 50, 50)
     else
-        stroke.Color = Color3.fromRGB(255, 255, 255) -- white
+        stroke.Color = Color3.fromRGB(255, 255, 255)
     end
 end)
 
 -- // ==================== RAYFIELD GUI ====================
+print("Creating Rayfield window...")
+
 local Window = Rayfield:CreateWindow({
     Name = "Silent Aim Control",
-    LoadingTitle = "Loading...",
+    Icon = 0,  -- optional icon
+    LoadingTitle = "Loading Aimbot",
     LoadingSubtitle = "by Script",
     Theme = "Default",
 })
 
-local MainTab = Window:CreateTab("Aimbot")
+local MainTab = Window:CreateTab("Aimbot", 4483362458)  -- icon ID
 
 MainTab:CreateToggle({
     Name = "Enable Silent Aim",
     CurrentValue = Settings.Enabled,
+    Flag = "ToggleAim",
     Callback = function(Value)
         Settings.Enabled = Value
+        print("Silent aim enabled:", Value)
     end,
 })
 
 MainTab:CreateSlider({
-    Name = "FOV Radius",
+    Name = "FOV Radius (px)",
     Range = {50, 400},
     Increment = 1,
     Suffix = "px",
     CurrentValue = Settings.FOV_Size,
+    Flag = "FOVSlider",
     Callback = function(Value)
         Settings.FOV_Size = Value
         updateFOVCircle()
+        print("FOV set to:", Value)
     end,
 })
 
@@ -142,14 +156,16 @@ MainTab:CreateDropdown({
     Name = "Target Body Part",
     Options = {"Head", "UpperTorso", "LowerTorso", "HumanoidRootPart"},
     CurrentOption = Settings.TargetPart,
+    Flag = "BodyPart",
     Callback = function(Option)
         Settings.TargetPart = Option
+        print("Target part changed to:", Option)
     end,
 })
 
 MainTab:CreateParagraph({
-    Name = "Info",
-    Content = "FOV Circle: Red = target inside, White = none\nWorks with projectile weapons only."
+    Name = "How to use",
+    Content = "• FOV circle follows your mouse\n• Red = enemy inside FOV\n• Works with guns and projectile weapons",
 })
 
-print("[Rayfield] GUI loaded successfully!")
+print("Rayfield GUI should now be visible!")
