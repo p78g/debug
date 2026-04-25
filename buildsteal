@@ -1,4 +1,4 @@
--- Town Build Copier - Exact Remotes (Resize + Rotate Fixed)
+-- Town Build Copier - Center + Sides + Exact Rotation (0 degrees version)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -62,8 +62,8 @@ Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, Current
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Exact Remotes)",
-    Description = "Using your exact SyncResize and SyncRotate",
+    Name = "🔄 Copy Build (Center + Sides + Exact Rotation)",
+    Description = "Center + side measurement + 0 degree rotation",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -78,6 +78,12 @@ Tab:CreateButton({
         end
 
         local sourceBuild = sourceArea:WaitForChild("Build")
+        local sourceBase = sourceArea:FindFirstChildWhichIsA("BasePart")
+
+        if not sourceBase then
+            Rayfield:Notify({Title = "Error", Content = "Could not find source base"}) 
+            return 
+        end
 
         local allParts = {}
         local function collect(obj)
@@ -92,22 +98,20 @@ Tab:CreateButton({
             return 
         end
 
-        local sumX, sumY, sumZ = 0, 0, 0
-        for _, p in ipairs(allParts) do
-            local pos = p.Position
-            sumX += pos.X; sumY += pos.Y; sumZ += pos.Z
-        end
-        local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
+        -- Center + Side measurement
+        local sourceCenter = sourceBase.Position
+        local destCenter = localBuildArea.Position
 
-        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
+        local centerOffset = destCenter - sourceCenter + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Using your exact remotes...", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Center + Sides method + exact rotation", Duration = 6})
 
         local createdParts = {}
 
         for _, sourcePart in ipairs(allParts) do
-            local offset = sourcePart.Position - sourceCenter
-            local targetPos = destOrigin + offset
+            local relativePos = sourcePart.Position - sourceCenter
+            local targetPos = destCenter + relativePos + centerOffset
+
             local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
 
             local partType = "Normal"
@@ -122,13 +126,12 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            -- CreatePart
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- === YOUR EXACT SYNCRESIZE ===
+                -- Exact Resize from your log
                 remote:InvokeServer("SyncResize",
                     {{ 
                         Part = newPart, 
@@ -147,7 +150,7 @@ Tab:CreateButton({
                 )
                 task.wait(0.4)
 
-                -- === YOUR EXACT SYNCROTATE ===
+                -- Exact Rotate (0 degrees version from your second remote)
                 remote:InvokeServer("SyncRotate",
                     {{ 
                         Part = newPart, 
@@ -165,7 +168,7 @@ Tab:CreateButton({
                 )
                 task.wait(0.4)
 
-                -- SyncMove
+                -- Move
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
                 task.wait(0.4)
             end
@@ -184,4 +187,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Exact Remotes Loaded", Content = "Using your provided SyncResize and SyncRotate", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Center + Sides | Exact Resize & Rotation (0 deg)", Duration = 8})
