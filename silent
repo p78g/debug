@@ -1,5 +1,14 @@
--- Load Rayfield
-local Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"))()
+-- Make sure Rayfield loads and we see errors
+local rayfieldUrl = "https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"
+local success, Rayfield = pcall(function()
+    return loadstring(game:HttpGet(rayfieldUrl))()
+end)
+
+if not success or not Rayfield then
+    error("Rayfield failed to load: " .. tostring(success))
+end
+
+print("Rayfield loaded successfully")
 
 -- Services
 local Players = game:GetService("Players")
@@ -8,25 +17,24 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- Settings (controlled by Rayfield)
+-- Settings
 local Settings = {
     Enabled = true,
     FOV = 200,
-    TargetPart = "Head",
+    TargetPart = "Head"
 }
 
--- ========== VISUAL FOV CIRCLE ==========
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "SilentAimFOV"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = game:GetService("CoreGui")
+-- ========== FOV CIRCLE (native) ==========
+local gui = Instance.new("ScreenGui")
+gui.Name = "AimbotFOV"
+gui.ResetOnSpawn = false
+gui.Parent = game:GetService("CoreGui")
 
 local circle = Instance.new("Frame")
 circle.BackgroundTransparency = 1
-circle.BorderSizePixel = 0
-circle.AnchorPoint = Vector2.new(0.5, 0.5)
 circle.Size = UDim2.fromOffset(Settings.FOV * 2, Settings.FOV * 2)
-circle.Parent = screenGui
+circle.AnchorPoint = Vector2.new(0.5, 0.5)
+circle.Parent = gui
 
 local corner = Instance.new("UICorner")
 corner.CornerRadius = UDim.new(1, 0)
@@ -34,15 +42,15 @@ corner.Parent = circle
 
 local stroke = Instance.new("UIStroke")
 stroke.Thickness = 2
-stroke.Transparency = 0.4
-stroke.Color = Color3.fromRGB(255, 255, 255) -- white default
+stroke.Transparency = 0.3
+stroke.Color = Color3.fromRGB(255, 255, 255)
 stroke.Parent = circle
 
-local function updateFOVSize()
+local function updateCircleSize()
     circle.Size = UDim2.fromOffset(Settings.FOV * 2, Settings.FOV * 2)
 end
 
--- ========== SILENT AIM LOGIC (same as raw script) ==========
+-- ========== SILENT AIM CORE ==========
 local function getClosestTarget()
     if not Settings.Enabled then return nil end
     local mousePos = UserInputService:GetMouseLocation()
@@ -51,15 +59,15 @@ local function getClosestTarget()
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character then
-            local targetPart = player.Character:FindFirstChild(Settings.TargetPart)
-            local humanoid = player.Character:FindFirstChildWhichIsA("Humanoid")
-            if targetPart and humanoid and humanoid.Health > 0 then
-                local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+            local part = player.Character:FindFirstChild(Settings.TargetPart)
+            local hum = player.Character:FindFirstChildWhichIsA("Humanoid")
+            if part and hum and hum.Health > 0 then
+                local vec, onScreen = Camera:WorldToViewportPoint(part.Position)
                 if onScreen then
-                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                    local dist = (Vector2.new(vec.X, vec.Y) - mousePos).Magnitude
                     if dist < bestDist then
                         bestDist = dist
-                        bestTarget = targetPart
+                        bestTarget = part
                     end
                 end
             end
@@ -68,68 +76,56 @@ local function getClosestTarget()
     return bestTarget
 end
 
--- Hook projectile system (same as original script)
-local function hookProjectiles()
-    local replicatedStorage = game:GetService("ReplicatedStorage")
-    local modulePath = replicatedStorage:FindFirstChild("Modules")
-    if modulePath then modulePath = modulePath:FindFirstChild("GunFramework") end
-    if modulePath then modulePath = modulePath:FindFirstChild("Modules") end
-    if not modulePath then
-        warn("[FOV Circle] Projectile module not found. Aimbot may not work.")
+-- Hook projectile (original method)
+local function hookProjectile()
+    local repStorage = game:GetService("ReplicatedStorage")
+    local projectileModule = repStorage:FindFirstChild("Modules")
+    if projectileModule then projectileModule = projectileModule:FindFirstChild("GunFramework") end
+    if projectileModule then projectileModule = projectileModule:FindFirstChild("Modules") end
+    if not projectileModule then
+        warn("Projectile module not found – aimbot won't work")
         return
     end
-    
-    local success, Projectile = pcall(require, modulePath.Projectile)
-    if not success or not Projectile then
-        warn("[FOV Circle] Failed to require Projectile.")
-        return
-    end
-    
-    local originalNew = Projectile.new
-    Projectile.new = function(params)
-        if params and params.Origin and params.Direction and Settings.Enabled then
+    local ok, Projectile = pcall(require, projectileModule.Projectile)
+    if not ok then return end
+    local old = Projectile.new
+    Projectile.new = function(p)
+        if p and p.Origin and p.Direction and Settings.Enabled then
             local target = getClosestTarget()
             if target then
-                params.Direction = (target.Position - params.Origin).Unit
+                p.Direction = (target.Position - p.Origin).Unit
             end
         end
-        return originalNew(params)
+        return old(p)
     end
-    print("[FOV Circle] Silent aim hooked.")
+    print("Projectile hooked")
 end
-hookProjectiles()
+hookProjectile()
 
--- Update circle position and color each frame
+-- Update circle position and color
 RunService.RenderStepped:Connect(function()
-    local mousePos = UserInputService:GetMouseLocation()
-    circle.Position = UDim2.fromOffset(mousePos.X, mousePos.Y)
-    
+    local mouse = UserInputService:GetMouseLocation()
+    circle.Position = UDim2.fromOffset(mouse.X, mouse.Y)
     local target = getClosestTarget()
-    if target and Settings.Enabled then
-        stroke.Color = Color3.fromRGB(255, 50, 50)  -- Red when target inside
-    else
-        stroke.Color = Color3.fromRGB(255, 255, 255) -- White when no target
-    end
+    stroke.Color = (target and Settings.Enabled) and Color3.fromRGB(255, 50, 50) or Color3.fromRGB(255,255,255)
 end)
 
--- ========== RAYFIELD MENU ==========
-local Window = Rayfield:CreateWindow({
-    Name = "Silent Aim + FOV Circle",
-    LoadingTitle = "Aimbot",
-    Theme = "Default",
+-- ========== RAYFIELD MENU (forced to appear) ==========
+local window = Rayfield:CreateWindow({
+    Name = "Silent Aim",
+    LoadingTitle = "Aimbot Control",
+    Theme = "Default"
 })
 
-local MainTab = Window:CreateTab("Aimbot")
+local tab = window:CreateTab("Aimbot")
 
-MainTab:CreateToggle({
+tab:CreateToggle({
     Name = "Enable Silent Aim",
     CurrentValue = Settings.Enabled,
-    Callback = function(v)
-        Settings.Enabled = v
-    end,
+    Callback = function(v) Settings.Enabled = v end
 })
 
-MainTab:CreateSlider({
+tab:CreateSlider({
     Name = "FOV Radius (px)",
     Range = {50, 400},
     Increment = 1,
@@ -137,17 +133,15 @@ MainTab:CreateSlider({
     CurrentValue = Settings.FOV,
     Callback = function(v)
         Settings.FOV = v
-        updateFOVSize()
-    end,
+        updateCircleSize()
+    end
 })
 
-MainTab:CreateDropdown({
+tab:CreateDropdown({
     Name = "Target Body Part",
     Options = {"Head", "UpperTorso", "LowerTorso", "HumanoidRootPart"},
     CurrentOption = Settings.TargetPart,
-    Callback = function(v)
-        Settings.TargetPart = v
-    end,
+    Callback = function(v) Settings.TargetPart = v end
 })
 
-print("Rayfield menu + FOV circle loaded. Circle follows mouse, red = target inside.")
+print("Rayfield window created – it should be on your screen now. If not, check F9 console for errors.")
