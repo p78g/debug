@@ -1,5 +1,6 @@
 -- =============================================
--- BUILD COPIER – Uses exact remote call structures
+-- BUILD COPIER – Final Working Version
+-- Uses exact remote structures from your logs
 -- =============================================
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
@@ -18,14 +19,14 @@ local selectedPlayer = nil
 local playerMapping = {}
 local dropdownObject = nil
 
--- Helper: get the BuildArea object (model or part) – we'll use its Position as origin
+-- Helper: get the BuildArea object (model/part)
 local function getBuildAreaObject(folderName)
     local privateArea = workspace:FindFirstChild("Private Building Areas")
     if not privateArea then return nil end
     return privateArea:FindFirstChild(folderName)
 end
 
--- Clear local build
+-- Clear local build folder
 local function clearLocalBuild()
     local privateArea = workspace:FindFirstChild("Private Building Areas")
     if not privateArea then return false end
@@ -63,7 +64,7 @@ local function refreshPlayerList()
     return options
 end
 
--- Copy a single part using the exact remote formats
+-- Copy a single part using exact remote patterns
 local function copyPart(sourcePart, sourceBuildArea, localBuildArea, localBuildFolder)
     -- Part type mapping
     local typeMap = {
@@ -73,7 +74,7 @@ local function copyPart(sourcePart, sourceBuildArea, localBuildArea, localBuildF
     }
     local partType = typeMap[sourcePart.Name] or "Normal"
 
-    -- Use the BuildArea model's Position as the origin (centre of plot)
+    -- Use BuildArea positions as origins (centres of plots)
     local sourceOrigin = sourceBuildArea.Position
     local localOrigin = localBuildArea.Position
 
@@ -98,7 +99,7 @@ local function copyPart(sourcePart, sourceBuildArea, localBuildArea, localBuildF
     local remote = syncAPI:FindFirstChild("ServerEndpoint")
     if not remote then return false end
 
-    -- 1. Create part at local origin (centre)
+    -- 1. Create part at local origin (centre of your plot)
     local createArgs = {"CreatePart", partType, CFrame.new(localOrigin), localBuildFolder}
     local success, newPart = pcall(function() return remote:InvokeServer(unpack(createArgs)) end)
     if not success or not newPart then
@@ -107,17 +108,20 @@ local function copyPart(sourcePart, sourceBuildArea, localBuildArea, localBuildF
     end
     task.wait(0.1)
 
-    -- Locate the actual part
+    -- Locate the actual part in the build folder
     local actualPart = newPart
     if not actualPart:IsA("BasePart") then
         actualPart = localBuildFolder:FindFirstChild(sourcePart.Name)
     end
-    if not actualPart then return false end
+    if not actualPart then
+        warn("Could not locate created part: " .. sourcePart.Name)
+        return false
+    end
 
-    -- 2. Rotate using the exact structure from the raw rotate example
-    -- Compute pivot CFrame (rotation only, no translation)
+    -- 2. Rotate using exact pattern from your raw rotate example
+    -- pivotCFrame is the rotation part of targetCFrame (no translation)
     local pivotCFrame = targetCFrame - targetCFrame.Position
-    -- The part's current CFrame (at local origin with identity rotation)
+    -- currentCFrame is the part's current CFrame (at local origin with identity rotation)
     local currentCFrame = CFrame.new(localOrigin)
     local rotateArgs = {
         "SyncRotate",
@@ -127,22 +131,19 @@ local function copyPart(sourcePart, sourceBuildArea, localBuildArea, localBuildF
     pcall(function() remote:InvokeServer(unpack(rotateArgs)) end)
     task.wait(0.1)
 
-    -- 3. Move using the exact structure from the raw move example
-    -- Compute delta (from current position to target position)
-    local delta = targetPos - localOrigin
-    -- The final CFrame for move action (position only, identity rotation)
-    local moveTargetCFrame = CFrame.new(targetPos)
+    -- 3. Move using exact pattern from your raw move example
+    local delta = targetPos - localOrigin  -- how far to move
+    local moveTargetCFrame = CFrame.new(targetPos)  -- position only, identity rotation
     local moveArgs = {
         "SyncMove",
         { { Part = actualPart, CFrame = moveTargetCFrame } },
-        { "AlongFace", Vector3.new(delta.X, delta.Y, delta.Z), "Global", moveTargetCFrame }
+        { "AlongFace", delta, "Global", moveTargetCFrame }
     }
     pcall(function() remote:InvokeServer(unpack(moveArgs)) end)
     task.wait(0.1)
 
-    -- 4. Resize using the exact structure from the raw resize example
-    -- We'll resize by adjusting the face that corresponds to the size difference
-    -- For simplicity, we resize to the exact size using a generic resize command
+    -- 4. Resize – simplified to set exact size (adjusts all faces)
+    -- We use ResizeFace with a dummy value; the Size in the first table is what matters.
     local resizeArgs = {
         "SyncResize",
         { { Part = actualPart, CFrame = moveTargetCFrame, Size = sourcePart.Size } },
@@ -264,5 +265,5 @@ MainTab:CreateButton({
     end
 })
 
-Rayfield:Notify({Title = "Build Copier Ready", Content = "Clear your build first, then copy.", Duration = 5})
-print("✅ Build Copier loaded with exact remote call structures")
+Rayfield:Notify({Title = "Build Copier Ready", Content = "Clear your build first, then select a player and copy.", Duration = 5})
+print("✅ Build Copier ready – uses exact remote structures.")
