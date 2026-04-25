@@ -1,16 +1,16 @@
--- Town Build Copier - Safe & Debug Version (Test works → Full Copy)
--- Slower creation with fresh parent every part + extra logging
+-- Town Build Copier - Ultra Diagnostic Version (0 parts issue)
+-- Run this and check F9 console carefully
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Build Copier - Safe Debug",
-    LoadingTitle = "Loading Safe Version...",
-    LoadingSubtitle = "Test works → Full copy",
+    Name = "Town Copier - Diagnostic",
+    LoadingTitle = "Diagnostic Mode",
+    LoadingSubtitle = "Finding why 0 parts spawn",
     Theme = "Default"
 })
 
-local Tab = Window:CreateTab("Copier", "hammer")
+local Tab = Window:CreateTab("Diagnostic Copier", "hammer")
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -20,8 +20,11 @@ local BUILDING_AREAS = Workspace:WaitForChild("Private Building Areas")
 
 local function getRemote()
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    local tool = char:WaitForChild("Building Tools", 5)
-    if not tool then error("Equip Building Tools!") end
+    local tool = char:WaitForChild("Building Tools", 10)
+    if not tool then
+        Rayfield:Notify({Title = "Error", Content = "Equip Building Tools first!", Duration = 10})
+        error("No Building Tools")
+    end
     return tool:WaitForChild("SyncAPI"):WaitForChild("ServerEndpoint")
 end
 
@@ -32,7 +35,6 @@ local baseHeight = 5
 local selectedPlayer = nil
 
 local realOffsetX, realOffsetY, realOffsetZ = -28.637, -17.512, 0
-local ghostOffsetX, ghostOffsetY, ghostOffsetZ = -28.637, -17.512, 0
 
 local playerOptions = {}
 
@@ -46,70 +48,74 @@ local function refreshPlayers()
 end
 refreshPlayers()
 
--- Test Button (already working for you)
-Tab:CreateSection("Test (Should Work)")
+Tab:CreateSection("Test (Should Still Work)")
 Tab:CreateButton({
-    Name = "🧪 Test: Spawn ONE Normal Part",
+    Name = "🧪 Test Single Part",
     Callback = function()
         local remote = getRemote()
-        local testPos = localBuildArea.Position + Vector3.new(0, baseHeight + 15, 0)
+        local testPos = localBuildArea.Position + Vector3.new(0, baseHeight + 10, 0)
         local newPart = remote:InvokeServer("CreatePart", "Normal", CFrame.new(testPos), localBuildFolder)
         if newPart and newPart:IsA("BasePart") then
-            Rayfield:Notify({Title = "Test Success", Content = "Part spawned at safe height!", Duration = 6})
+            Rayfield:Notify({Title = "Test OK", Content = "Single part created", Duration = 5})
         else
             Rayfield:Notify({Title = "Test Failed", Content = "Check F9 console", Duration = 8})
         end
     end,
 })
 
-Tab:CreateSection("Settings")
+Tab:CreateSection("Copy Settings")
 local Dropdown = Tab:CreateDropdown({
-    Name = "Select Player to Copy From",
+    Name = "Select Player to Copy",
     Options = playerOptions,
     CurrentOption = {},
     MultipleOptions = false,
     Callback = function(Option)
-        selectedPlayer = typeof(Option) == "table" and #Option > 0 and Players:FindFirstChild(Option[1]) or nil
+        selectedPlayer = (typeof(Option) == "table" and #Option > 0) and Players:FindFirstChild(Option[1]) or nil
     end,
 })
 
 Tab:CreateSlider({ Name = "Real X Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = realOffsetX, Callback = function(v) realOffsetX = v end })
-Tab:CreateSlider({ Name = "Real Y Offset", Range = {-50, 150}, Increment = 0.01, CurrentValue = realOffsetY, Callback = function(v) realOffsetY = v end })
-Tab:CreateSlider({ Name = "Real Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = realOffsetZ, Callback = function(v) realOffsetZ = v end })
-
-Tab:CreateSlider({ Name = "Ghost X Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = ghostOffsetX, Callback = function(v) ghostOffsetX = v end })
-Tab:CreateSlider({ Name = "Ghost Y Offset", Range = {-50, 150}, Increment = 0.01, CurrentValue = ghostOffsetY, Callback = function(v) ghostOffsetY = v end })
-Tab:CreateSlider({ Name = "Ghost Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = ghostOffsetZ, Callback = function(v) ghostOffsetZ = v end })
+Tab:CreateSlider({ Name = "Real Y Offset", Range = {-50, 150}, Increment = 0.01, CurrentValue = -17.512, Callback = function(v) realOffsetY = v end })
+Tab:CreateSlider({ Name = "Real Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = 0, Callback = function(v) realOffsetZ = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Safe Slow Mode)",
-    Description = "Slower creation - better chance of all parts spawning",
+    Name = "🔍 Start Diagnostic Copy (Very Slow)",
+    Description = "Use on a SMALL build first (5-10 parts)",
     Callback = function()
         if not selectedPlayer then
-            Rayfield:Notify({Title = "Error", Content = "No player selected!"}) 
-            return 
+            Rayfield:Notify({Title = "Error", Content = "Select a player!", Duration = 5})
+            return
         end
 
         local remote = getRemote()
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
-        if not sourceArea then return Rayfield:Notify({Title = "Error", Content = "Source plot missing"}) end
+        if not sourceArea then
+            Rayfield:Notify({Title = "Error", Content = "Source plot not found"}) 
+            return 
+        end
 
         local sourceBuild = sourceArea:WaitForChild("Build")
 
         local allParts = {}
         local function collect(obj)
             for _, v in ipairs(obj:GetDescendants()) do
-                if v:IsA("BasePart") then table.insert(allParts, v) end
+                if v:IsA("BasePart") and not v:IsA("Terrain") then
+                    table.insert(allParts, v)
+                end
             end
         end
         collect(sourceBuild)
 
+        print("=== DIAGNOSTIC START ===")
+        print("Total parts found in source:", #allParts)
+        print("Your Build Folder:", localBuildFolder:GetFullName())
+
         if #allParts == 0 then
-            Rayfield:Notify({Title = "Error", Content = "No parts in source build"}) 
+            Rayfield:Notify({Title = "Error", Content = "No parts found in source build"}) 
             return 
         end
 
-        -- Source center
+        -- Calculate source center
         local sumX, sumY, sumZ = 0, 0, 0
         for _, p in ipairs(allParts) do
             local pos = p.Position
@@ -119,9 +125,9 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(realOffsetX, baseHeight + realOffsetY, realOffsetZ)
 
-        Rayfield:Notify({Title = "Starting Safe Copy", Content = "Creating " .. #allParts .. " parts slowly...", Duration = 8})
+        Rayfield:Notify({Title = "Diagnostic Copy Started", Content = "Creating " .. #allParts .. " parts slowly...", Duration = 8})
 
-        local createdParts = {}
+        local createdCount = 0
 
         for i, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
@@ -140,50 +146,43 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            print(string.format("Part %d/%d → %s at %s", i, #allParts, partType, tostring(targetPos)))
+            -- Fresh folder reference every time
+            local currentFolder = localBuildArea:WaitForChild("Build")
 
-            -- Fresh parent every time + small delay
-            local currentBuildFolder = localBuildArea:WaitForChild("Build")
+            print(string.format("Attempt %d/%d | Type: %s | Target Pos: %s", i, #allParts, partType, tostring(targetPos)))
 
-            local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), currentBuildFolder)
+            local success, newPart = pcall(function()
+                return remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), currentFolder)
+            end)
 
-            if newPart and newPart:IsA("BasePart") then
-                table.insert(createdParts, newPart)
+            if success and newPart and newPart:IsA("BasePart") then
+                createdCount = createdCount + 1
+                print("✓ SUCCESS: Part created -", newPart:GetFullName())
 
-                task.wait(0.3) -- important delay after creation
-
-                remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
-                task.wait(0.4)
-
-                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
-                task.wait(0.4)
-
-                remote:InvokeServer("SyncResize", {{Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size}}, {"ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal"})
+                -- Apply rotation, move, resize with longer delays
                 task.wait(0.5)
+                remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
+                task.wait(0.5)
+                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                task.wait(0.5)
+                remote:InvokeServer("SyncResize", {{Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size}}, {"ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal"})
+                task.wait(0.6)
             else
-                warn("Failed to create part", i, partType)
+                print("✗ FAILED: Part", i, "Type:", partType)
+                warn("CreatePart result:", newPart)
             end
 
-            task.wait(0.2) -- extra breathing room between parts
+            task.wait(0.4) -- breathing room
         end
 
-        if #createdParts > 0 then
-            remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
-        end
-
-        Rayfield:Notify({Title = "Copy Finished", Content = #createdParts .. " / " .. #allParts .. " parts created. Check console (F9)", Duration = 10})
+        print("=== DIAGNOSTIC END === Created:", createdCount, "/", #allParts)
+        Rayfield:Notify({Title = "Diagnostic Finished", Content = createdCount .. " / " .. #allParts .. " parts created. Check F9 console!", Duration = 12})
     end,
 })
-
--- Ghost Preview (unchanged)
-Tab:CreateButton({ Name = "👻 Show Ghost Preview", Callback = function() 
-    -- (same ghost code as previous version - omitted for brevity, copy from earlier script if needed)
-    Rayfield:Notify({Title = "Ghost", Content = "Preview logic same as before", Duration = 4})
-end })
 
 Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     refreshPlayers()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Safe Version Loaded", Content = "Test works → Now try Safe Copy on a SMALL build first", Duration = 8})
+Rayfield:Notify({Title = "Diagnostic Script Loaded", Content = "Run on a SMALL build and check F9 console", Duration = 10})
