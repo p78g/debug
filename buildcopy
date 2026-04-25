@@ -1,11 +1,13 @@
--- Town Build Copier - Minimal Stable Version (Height = 4)
+-- =============================================
+-- TOWN BUILD COPIER – FIXED ROTATE, MOVE, RESIZE
+-- Uses exact remote call structures
+-- =============================================
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Copier - Minimal Stable",
-    LoadingTitle = "Loading...",
-    Theme = "Default"
+    Name = "Town Copier – Fixed",
+    Theme = "Default",
 })
 
 local Tab = Window:CreateTab("Copier", "hammer")
@@ -14,7 +16,7 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
-local BUILDING_AREAS = Workspace:WaitForChild("Private Building Areas")
+local BUILDING_AREAS = workspace:WaitForChild("Private Building Areas")
 
 local function getRemote()
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -26,12 +28,10 @@ end
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
 local localBuildFolder = localBuildArea:WaitForChild("Build")
 
-local BASE_Y = 4   -- as you requested
+local BASE_Y = 4
 local X_OFFSET = -28.637
 local Z_OFFSET = -17.512
-
 local selectedPlayer = nil
-
 local playerOptions = {}
 
 local function refreshPlayers()
@@ -59,9 +59,12 @@ Tab:CreateSection("Offsets")
 Tab:CreateSlider({ Name = "X Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = X_OFFSET, Callback = function(v) X_OFFSET = v end })
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
+-- Helper: convert Vector3 to vector.create (used by server)
+local function vec(v) return vector.create(v.X, v.Y, v.Z) end
+
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Minimal)",
-    Description = "Height = 4 | Simple Create + Resize",
+    Name = "🔄 Copy Build (Fixed Remote Calls)",
+    Description = "Full rotation, position, size exact",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player!"}) 
@@ -74,82 +77,111 @@ Tab:CreateButton({
 
         local sourceBuild = sourceArea:WaitForChild("Build")
 
+        -- Collect all BaseParts (flatten models)
         local allParts = {}
-        local function collect(obj)
-            for _, v in ipairs(obj:GetDescendants()) do
-                if v:IsA("BasePart") then table.insert(allParts, v) end
-            end
+        for _, v in ipairs(sourceBuild:GetDescendants()) do
+            if v:IsA("BasePart") then table.insert(allParts, v) end
         end
-        collect(sourceBuild)
 
         if #allParts == 0 then
             Rayfield:Notify({Title = "Error", Content = "No parts found"}) 
             return 
         end
 
-        local sumX, sumY, sumZ = 0, 0, 0
-        for _, p in ipairs(allParts) do
-            local pos = p.Position
-            sumX += pos.X; sumY += pos.Y; sumZ += pos.Z
-        end
-        local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
+        -- Auto‑centre (average of source part positions)
+        local sum = Vector3.zero
+        for _, p in ipairs(allParts) do sum = sum + p.Position end
+        local sourceCenter = sum / #allParts
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Simple version - Height = 4", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = #allParts .. " parts", Duration = 6})
 
         local createdParts = {}
 
         for _, sourcePart in ipairs(allParts) do
+            -- 1. Determine part type from Name (as in your raw logs)
+            local partType = "Normal"
+            local name = sourcePart.Name
+            if name == "Truss" then partType = "Truss"
+            elseif name == "Wedge" then partType = "Wedge"
+            elseif name == "Corner" then partType = "Corner"
+            elseif name == "Cylinder" then partType = "Cylinder"
+            elseif name == "Ball" then partType = "Ball"
+            elseif name == "Seat" then partType = "Seat"
+            elseif name == "Vehicle Seat" then partType = "Vehicle Seat"
+            elseif name == "Spawn" then partType = "Spawn"
+            end
+
+            -- 2. Compute offset from source centre and target position
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
+            local targetCFrame = CFrame.new(targetPos) * (sourcePart.CFrame - sourcePart.CFrame.Position)
 
-            local partType = "Normal"
-            local class = sourcePart.ClassName
-            if class == "TrussPart" then partType = "Truss"
-            elseif class == "WedgePart" then partType = "Wedge"
-            elseif class == "CornerWedgePart" then partType = "Corner"
-            elseif class == "Cylinder" or sourcePart.Shape == Enum.PartType.Cylinder then partType = "Cylinder"
-            elseif sourcePart.Shape == Enum.PartType.Ball then partType = "Ball"
-            elseif class == "Seat" then partType = "Seat"
-            elseif class == "VehicleSeat" then partType = "Vehicle Seat"
-            elseif class == "SpawnLocation" then partType = "Spawn"
+            -- 3. Create part at destination origin (centre of your plot + offsets)
+            local createArgs = {"CreatePart", partType, CFrame.new(destOrigin), localBuildFolder}
+            local ok, newPart = pcall(function() return remote:InvokeServer(unpack(createArgs)) end)
+            if not ok or not newPart then
+                warn("CreatePart failed for", sourcePart.Name)
+                goto continue
             end
+            task.wait(0.1)
 
-            -- Create
-            local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
-
-            if newPart and newPart:IsA("BasePart") then
-                table.insert(createdParts, newPart)
-
-                -- Minimal Rotation
-                remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = sourcePart.CFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
-                task.wait(0.3)
-
-                -- Move
-                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = CFrame.new(targetPos)}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
-                task.wait(0.3)
-
-                -- Resize - Simple & Direct
-                remote:InvokeServer("SyncResize", 
-                    {{ Part = newPart, CFrame = CFrame.new(targetPos), Size = sourcePart.Size }},
-                    { "ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal" }
-                )
-                task.wait(0.4)
+            -- Ensure we have the part instance
+            local actualPart = newPart:IsA("BasePart") and newPart or localBuildFolder:FindFirstChild(sourcePart.Name)
+            if not actualPart then
+                warn("Could not locate created part:", sourcePart.Name)
+                goto continue
             end
+            table.insert(createdParts, actualPart)
+
+            -- 4. SyncRotate – exact structure from raw log
+            local pivotCFrame = targetCFrame - targetCFrame.Position
+            local currentCFrame = CFrame.new(destOrigin)
+            local rotArgs = {
+                "SyncRotate",
+                { { Part = actualPart, CFrame = targetCFrame } },
+                { "AroundPivot", pivotCFrame, "Center", currentCFrame, "Center" }
+            }
+            pcall(function() remote:InvokeServer(unpack(rotArgs)) end)
+            task.wait(0.5)
+
+            -- 5. SyncMove – exact structure from raw log
+            local delta = targetPos - destOrigin
+            local moveArgs = {
+                "SyncMove",
+                { { Part = actualPart, CFrame = CFrame.new(targetPos) } },
+                { "AlongFace", vec(delta), "Global", CFrame.new(targetPos) }
+            }
+            pcall(function() remote:InvokeServer(unpack(moveArgs)) end)
+            task.wait(0.5)
+
+            -- 6. SyncResize – exact structure (using dummy ResizeFace, server applies Size from first table)
+            local resizeArgs = {
+                "SyncResize",
+                { { Part = actualPart, CFrame = CFrame.new(targetPos), Size = vec(sourcePart.Size) } },
+                { "ResizeFace", Enum.NormalId.Front, 1, vec(Vector3.zero), "Z", sourcePart.Size, "Normal" }
+            }
+            pcall(function() remote:InvokeServer(unpack(resizeArgs)) end)
+            task.wait(0.5)
+
+            ::continue::
         end
 
+        -- Optional: group copied parts into a Model (mirror source grouping? Not required for basic copy)
         if #createdParts > 0 then
-            remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
+            -- You can call CreateGroup if you want to group them all; otherwise skip.
+            -- remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 8})
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts copied", Duration = 8})
     end,
 })
 
 Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     refreshPlayers()
-    Dropdown:Refresh(playerOptions)
+    Dropdown:SetOptions(playerOptions)
+    if #playerOptions > 0 then Dropdown:SetValue({playerOptions[1]}) end
 end })
 
-Rayfield:Notify({Title = "Minimal Version Loaded", Content = "Height set to 4 | Simple resize attempt", Duration = 8})
+Rayfield:Notify({Title = "Fixed Version Loaded", Content = "Uses exact remote call structures", Duration = 8})
