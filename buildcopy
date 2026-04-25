@@ -1,5 +1,6 @@
 -- =============================================
--- BUILD COPIER – With Your Exact Offsets (-17.512, -28.637)
+-- BUILD COPIER – Auto Centre + Your Correction Offsets
+-- Default X = -28.637, Z = -17.512 (on top of auto centre)
 -- =============================================
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
@@ -11,24 +12,23 @@ local Window = Rayfield:CreateWindow({
 })
 
 local MainTab = Window:CreateTab("Copy Build")
-MainTab:CreateSection("Alignment Offsets (studs)")
+MainTab:CreateSection("Correction Offsets (applied after auto-centre)")
 
--- Default offsets based on your measurements
-local xOffset = -28.637   -- left/right
-local zOffset = -17.512   -- front/back
-local yExtra = 0
+-- Default corrections based on your measurements
+local xOffset = -28.637   -- left/right correction
+local zOffset = -17.512   -- front/back correction
+local yExtra = 0          -- vertical correction
 
 MainTab:CreateSlider({ Name = "X Offset (left/right)", Range = {-100, 100}, Increment = 0.5, CurrentValue = xOffset, Callback = function(v) xOffset = v end })
 MainTab:CreateSlider({ Name = "Z Offset (forward/back)", Range = {-100, 100}, Increment = 0.5, CurrentValue = zOffset, Callback = function(v) zOffset = v end })
 MainTab:CreateSlider({ Name = "Extra Y Offset (up/down)", Range = {-10, 10}, Increment = 0.5, CurrentValue = 0, Callback = function(v) yExtra = v end })
 
 MainTab:CreateButton({
-    Name = "Reset to Recommended Offsets",
+    Name = "Reset to Your Measured Offsets",
     Callback = function()
         xOffset = -28.637
         zOffset = -17.512
         yExtra = 0
-        -- Refresh sliders (Rayfield doesn't have a direct set, but you can re-create or notify)
         Rayfield:Notify({ Title = "Offsets Reset", Content = "X: -28.637, Z: -17.512, Y: 0" })
     end
 })
@@ -69,7 +69,7 @@ local function clearLocalBuild()
     end
 end
 
--- Compute average centre of all parts (auto)
+-- Auto‑centre: average of all part positions
 local function computeCentre(buildArea)
     local buildFolder = buildArea:FindFirstChild("Build")
     if not buildFolder then return buildArea.Position end
@@ -170,12 +170,14 @@ local function copyRealBuild()
         return
     end
 
+    -- Auto centre from source
     local srcCentre = computeCentre(srcBA)
     local baseY = 3 + yExtra
     local srcOrigin = srcCentre + Vector3.new(0, baseY, 0)
+    -- Destination origin = your plot's base position + manual corrections
     local dstOrigin = dstBA.Position + Vector3.new(xOffset, baseY, zOffset)
 
-    -- Collect all parts
+    -- Collect all parts recursively
     local allParts = {}
     local function collect(obj)
         for _, child in ipairs(obj:GetChildren()) do
@@ -206,7 +208,7 @@ local function copyRealBuild()
     Rayfield:Notify({ Title = "Complete", Content = successCount .. "/" .. #allParts .. " parts copied." })
 end
 
--- Ghost preview (direct clones, respects same offsets)
+-- Ghost preview (direct clones, same offsets)
 local ghostModel = nil
 local function showGhost()
     if ghostModel then ghostModel:Destroy() end
@@ -256,7 +258,7 @@ local function showGhost()
     end
     cloneParts(srcBuild)
     ghostModel.Parent = workspace
-    Rayfield:Notify({ Title = "Ghost Preview", Content = "Offsets applied: X=" .. xOffset .. ", Z=" .. zOffset })
+    Rayfield:Notify({ Title = "Ghost Preview", Content = "Auto-centre + your offsets applied." })
 end
 
 local function hideGhost()
@@ -283,4 +285,4 @@ MainTab:CreateButton({ Name = "Refresh Players", Callback = function()
     if newOpts[1] then dropdown:SetValue(newOpts[1]); selectedPlayer = newOpts[1] end
 end })
 
-Rayfield:Notify({ Title = "Ready", Content = "Using your offsets: X=-28.637, Z=-17.512. Show ghost to verify." })
+Rayfield:Notify({ Title = "Ready", Content = "Auto-centre + correction offsets X=-28.637, Z=-17.512. Adjust sliders if needed." })
