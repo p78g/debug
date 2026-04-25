@@ -1,10 +1,10 @@
--- Town Build Copier - Slow & Stable (Fixed Queue Exhausted Error)
+-- Town Build Copier - Exact Remotes (Resize + Rotate Fixed)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Slow Stable",
-    LoadingTitle = "Loading Slow Version...",
+    Name = "Town Plot Copier",
+    LoadingTitle = "Loading...",
     Theme = "Default"
 })
 
@@ -26,7 +26,7 @@ end
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
 local localBuildFolder = localBuildArea:WaitForChild("Build")
 
-local BASE_Y = 5
+local BASE_Y = 4
 local X_OFFSET = -28.637
 local Z_OFFSET = -17.512
 local EXTRA_Y = 0
@@ -62,8 +62,8 @@ Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, Current
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Slow & Stable)",
-    Description = "Long delays to prevent queue exhausted error",
+    Name = "🔄 Copy Build (Exact Remotes)",
+    Description = "Using your exact SyncResize and SyncRotate",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -101,11 +101,11 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Starting Slow Copy", Content = "Processing " .. #allParts .. " parts with long delays...", Duration = 8})
+        Rayfield:Notify({Title = "Copying...", Content = "Using your exact remotes...", Duration = 6})
 
         local createdParts = {}
 
-        for i, sourcePart in ipairs(allParts) do
+        for _, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
             local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
@@ -122,33 +122,60 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            print("Creating part", i, "of", #allParts, "| Type:", partType)
-
+            -- CreatePart
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }}, { "ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal" })
-                task.wait(0.8)
+                -- === YOUR EXACT SYNCRESIZE ===
+                remote:InvokeServer("SyncResize",
+                    {{ 
+                        Part = newPart, 
+                        CFrame = targetCFrame, 
+                        Size = sourcePart.Size 
+                    }},
+                    { 
+                        "ResizeFace", 
+                        Enum.NormalId.Right, 
+                        sourcePart.Size.X - newPart.Size.X, 
+                        Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), 
+                        "X", 
+                        Vector3.xAxis, 
+                        "Normal" 
+                    }
+                )
+                task.wait(0.4)
 
-                remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
-                task.wait(0.8)
+                -- === YOUR EXACT SYNCROTATE ===
+                remote:InvokeServer("SyncRotate",
+                    {{ 
+                        Part = newPart, 
+                        CFrame = targetCFrame 
+                    }},
+                    {
+                        "AroundPivot",
+                        CFrame.new(0, 0, 0, targetCFrame.XVector.X, targetCFrame.XVector.Y, targetCFrame.XVector.Z,
+                                   targetCFrame.YVector.X, targetCFrame.YVector.Y, targetCFrame.YVector.Z,
+                                   targetCFrame.ZVector.X, targetCFrame.ZVector.Y, targetCFrame.ZVector.Z),
+                        "Center",
+                        CFrame.new(targetPos.X, targetPos.Y, targetPos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                        "Center"
+                    }
+                )
+                task.wait(0.4)
 
+                -- SyncMove
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
-                task.wait(1.0)
-            else
-                warn("Failed to create part", i)
+                task.wait(0.4)
             end
-
-            task.wait(0.7) -- Extra delay between parts to prevent queue exhaustion
         end
 
         if #createdParts > 0 then
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " / " .. #allParts .. " parts created", Duration = 10})
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 8})
     end,
 })
 
@@ -157,4 +184,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Slow Stable Version", Content = "Long delays added to prevent 'queue exhausted' error", Duration = 8})
+Rayfield:Notify({Title = "Exact Remotes Loaded", Content = "Using your provided SyncResize and SyncRotate", Duration = 8})
