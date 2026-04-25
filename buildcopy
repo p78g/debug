@@ -1,6 +1,5 @@
 -- =============================================
--- BUILD COPIER – Auto Centre Detection (Radar)
--- Scans source build, computes centre from all parts
+-- BUILD COPIER – Auto Centre + Debug Output
 -- =============================================
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
@@ -37,7 +36,8 @@ local dropdown = nil
 
 local function getBuildArea(folderName)
     local pa = workspace:FindFirstChild("Private Building Areas")
-    return pa and pa:FindFirstChild(folderName)
+    if not pa then return nil end
+    return pa:FindFirstChild(folderName)
 end
 
 local function refreshPlayers()
@@ -53,6 +53,8 @@ local function refreshPlayers()
             playerMapping[pn] = name
         end
     end
+    -- Debug: print found players
+    print("[Build Copier] Found players:", table.concat(opts, ", "))
     return opts
 end
 
@@ -62,6 +64,8 @@ local function clearLocalBuild()
     if localBA and localBA:FindFirstChild("Build") then
         for _, p in ipairs(localBA.Build:GetChildren()) do p:Destroy() end
         Rayfield:Notify({Title = "Cleared", Content = "Your build cleared."})
+    else
+        Rayfield:Notify({Title = "Warning", Content = "Could not find your Build folder."})
     end
 end
 
@@ -86,17 +90,34 @@ local function computeCentre(buildArea)
     return sum / #parts
 end
 
--- Ghost preview
+-- Ghost preview (fixed nil errors)
 local ghostModel = nil
 local function showGhost()
     if ghostModel then ghostModel:Destroy() end
-    if not selectedPlayer then Rayfield:Notify({Title = "Error", Content = "Select a player."}) return end
-    local srcFolder = playerMapping[selectedPlayer]
-    local srcBA = getBuildArea(srcFolder)
+    if not selectedPlayer then
+        Rayfield:Notify({Title = "Error", Content = "Select a player first."})
+        return
+    end
+    local srcFolderName = playerMapping[selectedPlayer]
+    if not srcFolderName then
+        Rayfield:Notify({Title = "Error", Content = "Player folder not found in mapping."})
+        return
+    end
+    local srcBA = getBuildArea(srcFolderName)
     local dstBA = getBuildArea(game.Players.LocalPlayer.Name .. "BuildArea")
-    if not srcBA or not dstBA then return end
+    if not srcBA then
+        Rayfield:Notify({Title = "Error", Content = "Source build area not found: " .. srcFolderName})
+        return
+    end
+    if not dstBA then
+        Rayfield:Notify({Title = "Error", Content = "Your build area not found. Make sure you have a plot."})
+        return
+    end
     local srcBuild = srcBA:FindFirstChild("Build")
-    if not srcBuild then return end
+    if not srcBuild then
+        Rayfield:Notify({Title = "Error", Content = "Source has no Build folder."})
+        return
+    end
 
     local srcCentre = computeCentre(srcBA)
     local dstCentre = dstBA.Position
@@ -136,7 +157,7 @@ local function hideGhost()
     if ghostModel then ghostModel:Destroy() end
 end
 
--- Real copy using exact remote structures
+-- Real copy (unchanged, but ensures all parts are processed)
 local remote = nil
 local function getRemote()
     if remote then return remote end
@@ -182,17 +203,30 @@ local function copySinglePart(part, srcOrigin, dstOrigin, dstBuild)
 end
 
 local function copyReal()
-    if not selectedPlayer then Rayfield:Notify({Title = "Error", Content = "Select a player."}) return end
+    if not selectedPlayer then
+        Rayfield:Notify({Title = "Error", Content = "Select a player."})
+        return
+    end
     hideGhost()
     clearLocalBuild()
     task.wait(0.5)
-    local srcFolder = playerMapping[selectedPlayer]
-    local srcBA = getBuildArea(srcFolder)
+    local srcFolderName = playerMapping[selectedPlayer]
+    if not srcFolderName then
+        Rayfield:Notify({Title = "Error", Content = "Player folder not found."})
+        return
+    end
+    local srcBA = getBuildArea(srcFolderName)
     local dstBA = getBuildArea(game.Players.LocalPlayer.Name .. "BuildArea")
-    if not srcBA or not dstBA then Rayfield:Notify({Title = "Error", Content = "BuildAreas missing."}) return end
+    if not srcBA or not dstBA then
+        Rayfield:Notify({Title = "Error", Content = "BuildAreas missing."})
+        return
+    end
     local srcBuild = srcBA:FindFirstChild("Build")
     local dstBuild = dstBA:FindFirstChild("Build")
-    if not srcBuild or not dstBuild then Rayfield:Notify({Title = "Error", Content = "Build folders missing."}) return end
+    if not srcBuild or not dstBuild then
+        Rayfield:Notify({Title = "Error", Content = "Build folders missing."})
+        return
+    end
 
     local srcCentre = computeCentre(srcBA)
     local dstCentre = dstBA.Position
@@ -209,7 +243,10 @@ local function copyReal()
         end
     end
     collect(srcBuild)
-    if #allParts == 0 then Rayfield:Notify({Title = "Info", Content = "No parts."}) return end
+    if #allParts == 0 then
+        Rayfield:Notify({Title = "Info", Content = "No parts found."})
+        return
+    end
     Rayfield:Notify({Title = "Copying", Content = #allParts .. " parts..."})
     local success = 0
     for _, p in ipairs(allParts) do
@@ -233,10 +270,10 @@ MainTab:CreateButton({Name = "Clear Your Build", Callback = clearLocalBuild})
 MainTab:CreateButton({Name = "Show Ghost Preview", Callback = showGhost})
 MainTab:CreateButton({Name = "Hide Ghost", Callback = hideGhost})
 MainTab:CreateButton({Name = "Copy Real Build", Callback = copyReal})
-MainTab:CreateButton({Name = "Refresh", Callback = function()
+MainTab:CreateButton({Name = "Refresh Players", Callback = function()
     local newOpts = refreshPlayers()
     dropdown:SetOptions(newOpts)
     if newOpts[1] then dropdown:SetValue(newOpts[1]); selectedPlayer = newOpts[1] end
 end})
 
-Rayfield:Notify({Title = "Ready", Content = "Auto-centre enabled. Use ghost preview to verify."})
+Rayfield:Notify({Title = "Ready", Content = "Use ghost preview to check alignment."})
