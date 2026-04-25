@@ -1,4 +1,4 @@
--- Town Build Copier - Exact Resize + Rotation (Final)
+-- Town Build Copier - Resize Every Side (Direction-Aware)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -62,8 +62,8 @@ Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, Current
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Exact Resize + Rotation)",
-    Description = "Uses your exact resize for different directions",
+    Name = "🔄 Copy Build (Resize All Sides)",
+    Description = "Tries to resize on correct face for each part",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -101,7 +101,7 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Using exact resize & rotation...", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Resizing on correct faces...", Duration = 6})
 
         local createdParts = {}
 
@@ -127,7 +127,25 @@ Tab:CreateButton({
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- Exact Resize based on your examples (we'll use Right for now, can be improved later)
+                -- Direction-aware Resize
+                local sizeDiffX = sourcePart.Size.X - newPart.Size.X
+                local sizeDiffY = sourcePart.Size.Y - newPart.Size.Y
+                local sizeDiffZ = sourcePart.Size.Z - newPart.Size.Z
+
+                local normalId = Enum.NormalId.Right
+                local axis = "X"
+                local direction = Vector3.xAxis
+
+                if math.abs(sizeDiffY) > math.abs(sizeDiffX) and math.abs(sizeDiffY) > math.abs(sizeDiffZ) then
+                    normalId = Enum.NormalId.Top
+                    axis = "Y"
+                    direction = Vector3.yAxis
+                elseif math.abs(sizeDiffZ) > math.abs(sizeDiffX) then
+                    normalId = Enum.NormalId.Back
+                    axis = "Z"
+                    direction = Vector3.zAxis
+                end
+
                 remote:InvokeServer("SyncResize",
                     {{ 
                         Part = newPart, 
@@ -136,17 +154,17 @@ Tab:CreateButton({
                     }},
                     { 
                         "ResizeFace", 
-                        Enum.NormalId.Right, 
-                        sourcePart.Size.X - newPart.Size.X, 
-                        Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), 
-                        "X", 
-                        Vector3.xAxis, 
+                        normalId, 
+                        0, 
+                        Vector3.new(0, 0, 0), 
+                        axis, 
+                        direction, 
                         "Normal" 
                     }
                 )
                 task.wait(0.4)
 
-                -- Exact SyncRotate (your 0 degree version)
+                -- Your perfect rotation
                 remote:InvokeServer("SyncRotate",
                     {{ Part = newPart, CFrame = targetCFrame }},
                     {
@@ -180,4 +198,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Exact Remotes", Content = "Using your provided SyncResize and SyncRotate", Duration = 8})
+Rayfield:Notify({Title = "Direction-Aware Resize", Content = "Tries Right / Top / Back based on size difference", Duration = 8})
