@@ -1,9 +1,9 @@
--- Town Build Copier - Resize Every Side (Direction-Aware)
+-- Town Build Copier - Minimal Exact Resize Test
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier",
+    Name = "Town Plot Copier - Resize Test",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -29,7 +29,6 @@ local localBuildFolder = localBuildArea:WaitForChild("Build")
 local BASE_Y = 4
 local X_OFFSET = -28.637
 local Z_OFFSET = -17.512
-local EXTRA_Y = 0
 
 local selectedPlayer = nil
 
@@ -58,12 +57,11 @@ local Dropdown = Tab:CreateDropdown({
 
 Tab:CreateSection("Offsets")
 Tab:CreateSlider({ Name = "X Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = X_OFFSET, Callback = function(v) X_OFFSET = v end })
-Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, CurrentValue = EXTRA_Y, Callback = function(v) EXTRA_Y = v end })
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Resize All Sides)",
-    Description = "Tries to resize on correct face for each part",
+    Name = "🔄 Test Copy Build",
+    Description = "Minimal test with your exact resize",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -99,13 +97,13 @@ Tab:CreateButton({
         end
         local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
 
-        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
+        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Resizing on correct faces...", Duration = 6})
+        Rayfield:Notify({Title = "Testing...", Content = "Testing exact resize...", Duration = 5})
 
         local createdParts = {}
 
-        for _, sourcePart in ipairs(allParts) do
+        for i, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
             local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
@@ -127,25 +125,7 @@ Tab:CreateButton({
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- Direction-aware Resize
-                local sizeDiffX = sourcePart.Size.X - newPart.Size.X
-                local sizeDiffY = sourcePart.Size.Y - newPart.Size.Y
-                local sizeDiffZ = sourcePart.Size.Z - newPart.Size.Z
-
-                local normalId = Enum.NormalId.Right
-                local axis = "X"
-                local direction = Vector3.xAxis
-
-                if math.abs(sizeDiffY) > math.abs(sizeDiffX) and math.abs(sizeDiffY) > math.abs(sizeDiffZ) then
-                    normalId = Enum.NormalId.Top
-                    axis = "Y"
-                    direction = Vector3.yAxis
-                elseif math.abs(sizeDiffZ) > math.abs(sizeDiffX) then
-                    normalId = Enum.NormalId.Back
-                    axis = "Z"
-                    direction = Vector3.zAxis
-                end
-
+                -- Your exact sideways resize remote
                 remote:InvokeServer("SyncResize",
                     {{ 
                         Part = newPart, 
@@ -154,15 +134,15 @@ Tab:CreateButton({
                     }},
                     { 
                         "ResizeFace", 
-                        normalId, 
+                        Enum.NormalId.Right, 
                         0, 
                         Vector3.new(0, 0, 0), 
-                        axis, 
-                        direction, 
+                        "X", 
+                        Vector3.xAxis, 
                         "Normal" 
                     }
                 )
-                task.wait(0.4)
+                task.wait(0.5)
 
                 -- Your perfect rotation
                 remote:InvokeServer("SyncRotate",
@@ -177,11 +157,10 @@ Tab:CreateButton({
                         "Local"
                     }
                 )
-                task.wait(0.4)
+                task.wait(0.5)
 
-                -- Move
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
-                task.wait(0.4)
+                task.wait(0.5)
             end
         end
 
@@ -198,4 +177,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Direction-Aware Resize", Content = "Tries Right / Top / Back based on size difference", Duration = 8})
+Rayfield:Notify({Title = "Minimal Test", Content = "Using your exact resize + rotation", Duration = 8})
