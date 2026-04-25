@@ -1,10 +1,11 @@
--- Town Build Copier - Fixed CreatePart Issue (Fresh Remote + Folder Every Call)
+-- Town Build Copier - Back to Original Remote Structure
+-- Using exact args you provided first
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Build Copier - Fixed",
-    LoadingTitle = "Applying Fixes...",
+    Name = "Town Build Copier - Original Remotes",
+    LoadingTitle = "Loading...",
     Theme = "Default"
 })
 
@@ -16,7 +17,7 @@ local LocalPlayer = Players.LocalPlayer
 
 local BUILDING_AREAS = Workspace:WaitForChild("Private Building Areas")
 
-local function getFreshRemote()
+local function getRemote()
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local tool = char:WaitForChild("Building Tools", 5)
     if not tool then error("Equip Building Tools!") end
@@ -24,6 +25,7 @@ local function getFreshRemote()
 end
 
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
+local localBuildFolder = localBuildArea:WaitForChild("Build")
 
 local baseHeight = 5
 local selectedPlayer = nil
@@ -41,7 +43,7 @@ local function refreshPlayers()
 end
 refreshPlayers()
 
-Tab:CreateSection("Player")
+Tab:CreateSection("Player Selection")
 local Dropdown = Tab:CreateDropdown({
     Name = "Select Player to Copy From",
     Options = playerOptions,
@@ -58,19 +60,17 @@ Tab:CreateSlider({ Name = "Y Offset", Range = {-50, 150}, Increment = 0.01, Curr
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = realOffsetZ, Callback = function(v) realOffsetZ = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Fixed Version)",
-    Description = "Fresh remote + folder every part + longer delays",
+    Name = "🔄 Copy Build (Original Remote Style)",
+    Description = "Using exact remote structures you first provided",
     Callback = function()
         if not selectedPlayer then
-            Rayfield:Notify({Title = "Error", Content = "Select a player first!"}) 
+            Rayfield:Notify({Title = "Error", Content = "No player selected!"}) 
             return 
         end
 
+        local remote = getRemote()
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
-        if not sourceArea then 
-            Rayfield:Notify({Title = "Error", Content = "Source area not found"}) 
-            return 
-        end
+        if not sourceArea then return Rayfield:Notify({Title = "Error", Content = "Source not found"}) end
 
         local sourceBuild = sourceArea:WaitForChild("Build")
 
@@ -83,10 +83,11 @@ Tab:CreateButton({
         collect(sourceBuild)
 
         if #allParts == 0 then
-            Rayfield:Notify({Title = "Error", Content = "No parts in source"}) 
+            Rayfield:Notify({Title = "Error", Content = "No parts found"}) 
             return 
         end
 
+        -- Calculate source center
         local sumX, sumY, sumZ = 0, 0, 0
         for _, p in ipairs(allParts) do
             local pos = p.Position
@@ -96,14 +97,13 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(realOffsetX, baseHeight + realOffsetY, realOffsetZ)
 
-        Rayfield:Notify({Title = "Starting Copy", Content = "Trying " .. #allParts .. " parts with fresh calls...", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Starting with original remote style...", Duration = 6})
 
-        local created = 0
+        local createdParts = {}
 
-        for i, sourcePart in ipairs(allParts) do
+        for _, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
-            local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
 
             local partType = "Normal"
             local class = sourcePart.ClassName
@@ -117,44 +117,58 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            -- **Fresh remote and folder every single part**
-            local remote = getFreshRemote()
-            local currentFolder = localBuildArea:WaitForChild("Build")
+            -- 1. CreatePart - Exact structure from your first message
+            local createArgs = {
+                "CreatePart",
+                partType,
+                CFrame.new(targetPos.X, targetPos.Y, targetPos.Z),
+                localBuildFolder
+            }
+            local newPart = remote:InvokeServer(unpack(createArgs))
 
-            print(string.format("Attempt %d/%d | %s | Pos: %.2f, %.2f, %.2f", i, #allParts, partType, targetPos.X, targetPos.Y, targetPos.Z))
+            if newPart and newPart:IsA("BasePart") then
+                table.insert(createdParts, newPart)
 
-            local success, newPart = pcall(function()
-                return remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), currentFolder)
-            end)
-
-            if success and newPart and newPart:IsA("BasePart") then
-                created = created + 1
-                print("✓ Created part", i)
-
-                task.wait(0.6)
-
-                -- Rotation + Move + Resize with longer delays
-                remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
+                -- 2. SyncRotate - Exact from your log
+                local rotateArgs = {
+                    "SyncRotate",
+                    {{ Part = newPart, CFrame = sourcePart.CFrame }},
+                    { "AroundPivot", CFrame.new(0,0,0), "Center", CFrame.new(), "Center" }
+                }
+                remote:InvokeServer(unpack(rotateArgs))
                 task.wait(0.5)
-                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+
+                -- 3. SyncMove
+                local moveArgs = {
+                    "SyncMove",
+                    {{ Part = newPart, CFrame = CFrame.new(targetPos.X, targetPos.Y, targetPos.Z) }},
+                    { "AlongFace", Vector3.new(0,0,0), "Global", CFrame.new(targetPos.X, targetPos.Y, targetPos.Z) }
+                }
+                remote:InvokeServer(unpack(moveArgs))
                 task.wait(0.5)
-                remote:InvokeServer("SyncResize", {{Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size}}, {"ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal"})
-                task.wait(0.6)
-            else
-                print("✗ Failed to create part", i)
-                warn("Result:", newPart)
+
+                -- 4. SyncResize (basic)
+                local resizeArgs = {
+                    "SyncResize",
+                    {{ Part = newPart, CFrame = CFrame.new(targetPos), Size = sourcePart.Size }},
+                    { "ResizeFace", Enum.NormalId.Right, 0, Vector3.new(0,0,0), "X", Vector3.xAxis, "Normal" }
+                }
+                remote:InvokeServer(unpack(resizeArgs))
+                task.wait(0.5)
             end
-
-            task.wait(0.8) -- Very important delay to prevent rate limiting
         end
 
-        Rayfield:Notify({Title = "Copy Done", Content = created .. " / " .. #allParts .. " parts created. Check console.", Duration = 10})
+        if #createdParts > 0 then
+            remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
+        end
+
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 8})
     end,
 })
 
-Tab:CreateButton({ Name = "Refresh Players", Callback = function()
+Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     refreshPlayers()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Fixed Script Loaded", Content = "Fresh remote + folder every part + long delays", Duration = 8})
+Rayfield:Notify({Title = "Original Remote Version Loaded", Content = "Using exact structures from your first message", Duration = 8})
