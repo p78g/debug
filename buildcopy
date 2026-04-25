@@ -1,9 +1,10 @@
--- Town Build Copier - Corrected Offsets (Y = +5 base, Z gets the -17.512 offset)
+-- Town Build Copier - Strictly Corrected Offsets
+-- Y = +5 only | Z = -17.512 (no -17 on Y)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Build Copier - Correct Offsets",
+    Name = "Town Build Copier - Fixed Y/Z Offsets",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -26,14 +27,12 @@ end
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
 local localBuildFolder = localBuildArea:WaitForChild("Build")
 
-local baseHeight = 5
+local BASE_HEIGHT = 5                    -- Fixed +5 studs on Y
+local X_OFFSET = -28.637                 -- Left/Right offset
+local Z_OFFSET = -17.512                 -- Front/Back offset (this is the -17 you want)
+local EXTRA_Y_OFFSET = 0                 -- Additional Y (keep at 0 unless you want more)
 
 local selectedPlayer = nil
-
--- Corrected defaults: Y offset = 0, Z offset gets the -17.512
-local realOffsetX = -28.637
-local realOffsetY = 0
-local realOffsetZ = -17.512
 
 local playerOptions = {}
 
@@ -58,14 +57,14 @@ local Dropdown = Tab:CreateDropdown({
     end,
 })
 
-Tab:CreateSection("Real Copy Offsets")
-Tab:CreateSlider({ Name = "X Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = realOffsetX, Callback = function(v) realOffsetX = v end })
-Tab:CreateSlider({ Name = "Y Offset (Additional)", Range = {-50, 150}, Increment = 0.01, CurrentValue = realOffsetY, Callback = function(v) realOffsetY = v end })
-Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = realOffsetZ, Callback = function(v) realOffsetZ = v end })
+Tab:CreateSection("Offsets")
+Tab:CreateSlider({ Name = "X Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = X_OFFSET, Callback = function(v) X_OFFSET = v end })
+Tab:CreateSlider({ Name = "Extra Y Offset", Range = {-50, 100}, Increment = 0.01, CurrentValue = EXTRA_Y_OFFSET, Callback = function(v) EXTRA_Y_OFFSET = v end })
+Tab:CreateSlider({ Name = "Z Offset (-17)", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Corrected Offsets)",
-    Description = "Y = +5 base | Z gets horizontal offset",
+    Name = "🔄 Copy Build (Y = +5 | Z = -17)",
+    Description = "Strictly: Y only gets +5, Z gets the -17 offset",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "No player selected!"}) 
@@ -75,7 +74,7 @@ Tab:CreateButton({
         local remote = getRemote()
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
         if not sourceArea then 
-            Rayfield:Notify({Title = "Error", Content = "Source plot not found"}) 
+            Rayfield:Notify({Title = "Error", Content = "Source not found"}) 
             return 
         end
 
@@ -90,7 +89,7 @@ Tab:CreateButton({
         collect(sourceBuild)
 
         if #allParts == 0 then
-            Rayfield:Notify({Title = "Error", Content = "No parts found in source"}) 
+            Rayfield:Notify({Title = "Error", Content = "No parts found"}) 
             return 
         end
 
@@ -98,16 +97,14 @@ Tab:CreateButton({
         local sumX, sumY, sumZ = 0, 0, 0
         for _, p in ipairs(allParts) do
             local pos = p.Position
-            sumX += pos.X
-            sumY += pos.Y
-            sumZ += pos.Z
+            sumX += pos.X; sumY += pos.Y; sumZ += pos.Z
         end
         local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
 
-        -- Correct destination: baseHeight on Y + user Y offset
-        local destOrigin = localBuildArea.Position + Vector3.new(realOffsetX, baseHeight + realOffsetY, realOffsetZ)
+        -- CORRECT DESTINATION ORIGIN
+        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_HEIGHT + EXTRA_Y_OFFSET, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Using corrected offsets (+5 Y base)", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Y = +5 | Z = -17.512", Duration = 6})
 
         local createdParts = {}
 
@@ -127,7 +124,6 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            -- Create Part
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
@@ -159,4 +155,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Offsets Corrected", Content = "Y = +5 base height | Z offset applied", Duration = 8})
+Rayfield:Notify({Title = "Offsets Fixed", Content = "Y only gets +5 studs | Z gets the -17 offset", Duration = 8})
