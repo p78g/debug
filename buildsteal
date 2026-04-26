@@ -1,9 +1,9 @@
--- Town Build Copier - Stable Base (Minimal Changes)
+-- Town Build Copier - Mixed Rotation Protected (Y Flipped Only)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Stable",
+    Name = "Town Plot Copier - Mixed Protected",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -55,8 +55,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Stable Base)",
-    Description = "Stable rotation + resize retry scan",
+    Name = "🔄 Copy Build (Mixed Protected)",
+    Description = "Mixed = unchanged | Single Y flipped | Retry scan",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -94,15 +94,56 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Stable base with retry", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Mixed protected + retry scan", Duration = 6})
 
         local createdParts = {}
-        local toRetry = {}
+        local processed = {}
 
         for _, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
-            local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
+
+            -- Get rotation from Data (X, Y, Z degrees)
+            local rotX, rotY, rotZ = 0, 0, 0
+            local data = sourcePart:FindFirstChild("Data")
+            if data and data:IsA("StringValue") then
+                local nums = {}
+                for n in data.Value:gmatch("%-?%d+%.?%d*") do
+                    table.insert(nums, tonumber(n))
+                end
+                if #nums >= 3 then
+                    rotX = nums[1] or 0
+                    rotY = nums[2] or 0
+                    rotZ = nums[3] or 0
+                end
+            else
+                local sx, sy, sz = sourcePart.CFrame:ToEulerAnglesXYZ()
+                rotX = math.deg(sx)
+                rotY = math.deg(sy)
+                rotZ = math.deg(sz)
+            end
+
+            -- Detect if mixed rotation (more than one axis has significant rotation)
+            local isMixed = false
+            local activeAxes = 0
+            if math.abs(rotX) > 0.5 then activeAxes = activeAxes + 1 end
+            if math.abs(rotY) > 0.5 then activeAxes = activeAxes + 1 end
+            if math.abs(rotZ) > 0.5 then activeAxes = activeAxes + 1 end
+            if activeAxes > 1 then isMixed = true end
+
+            -- For mixed: leave completely unchanged
+            -- For single: flip only Y (vertical)
+            local finalRotX = rotX
+            local finalRotY = rotY
+            local finalRotZ = rotZ
+
+            if not isMixed then
+                if math.abs(rotY) > 0.5 then
+                    finalRotY = -rotY   -- flip Y
+                end
+            end
+
+            local targetCFrame = CFrame.new(targetPos) * CFrame.fromEulerAnglesXYZ(math.rad(finalRotX), math.rad(finalRotY), math.rad(finalRotZ))
 
             local partType = "Normal"
             local class = sourcePart.ClassName
@@ -120,67 +161,48 @@ Tab:CreateButton({
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
-                table.insert(toRetry, {newPart = newPart, sourcePart = sourcePart, targetCFrame = targetCFrame})
+                table.insert(processed, {newPart = newPart, sourcePart = sourcePart, targetCFrame = targetCFrame, finalRotX = finalRotX, finalRotY = finalRotY, finalRotZ = finalRotZ})
 
-                -- Resize using your working logic
-                remote:InvokeServer("SyncResize",
-                    {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
-                    { "ResizeFace", Enum.NormalId.Right, sourcePart.Size.X - newPart.Size.X, Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), "X", Vector3.xAxis, "Normal" }
-                )
-                task.wait(0.4)
+                local sourceSize = sourcePart.Size
 
-                -- Your perfect rotation logic (no changes)
-                remote:InvokeServer("SyncRotate",
-                    {{ Part = newPart, CFrame = targetCFrame }},
-                    {
-                        "AroundPivot",
-                        CFrame.new(0, 0, 0, targetCFrame.XVector.X, targetCFrame.XVector.Y, targetCFrame.XVector.Z,
-                                   targetCFrame.YVector.X, targetCFrame.YVector.Y, targetCFrame.YVector.Z,
-                                   targetCFrame.ZVector.X, targetCFrame.ZVector.Y, targetCFrame.ZVector.Z),
-                        "Local",
-                        CFrame.new(targetPos.X, targetPos.Y, targetPos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1),
-                        "Local"
-                    }
-                )
-                task.wait(0.4)
+                -- Resize
+                remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
+                task.wait(0.25)
+                remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
+                task.wait(0.25)
+                remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
+                task.wait(0.25)
+
+                -- Rotate
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(finalRotX), "X" })
+                task.wait(0.25)
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(finalRotY), "Y" })
+                task.wait(0.25)
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(finalRotZ), "Z" })
+                task.wait(0.25)
 
                 -- Move
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
-                task.wait(0.4)
+                task.wait(0.3)
             end
         end
 
-        -- Retry Scan for any bad parts
-        Rayfield:Notify({Title = "Retry Scan", Content = "Fixing any remaining issues...", Duration = 5})
-        for _, entry in ipairs(toRetry) do
+        -- Retry Scan
+        Rayfield:Notify({Title = "Retry Scan", Content = "Fixing any missed parts...", Duration = 5})
+        for _, entry in ipairs(processed) do
             local newPart = entry.newPart
-            local sourcePart = entry.sourcePart
-            local targetCFrame = entry.targetCFrame
-
             if newPart and newPart.Parent then
-                local sizeDiff = (newPart.Size - sourcePart.Size).Magnitude
+                local sourceSize = entry.sourcePart.Size
+                local sizeDiff = (newPart.Size - sourceSize).Magnitude
                 if sizeDiff > 0.5 then
-                    remote:InvokeServer("SyncResize",
-                        {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
-                        { "ResizeFace", Enum.NormalId.Right, sourcePart.Size.X - newPart.Size.X, Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), "X", Vector3.xAxis, "Normal" }
-                    )
-                    task.wait(0.3)
+                    local targetCFrame = entry.targetCFrame
+                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
+                    task.wait(0.2)
+                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
+                    task.wait(0.2)
+                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
+                    task.wait(0.2)
                 end
-
-                -- Re-apply rotation
-                remote:InvokeServer("SyncRotate",
-                    {{ Part = newPart, CFrame = targetCFrame }},
-                    {
-                        "AroundPivot",
-                        CFrame.new(0, 0, 0, targetCFrame.XVector.X, targetCFrame.XVector.Y, targetCFrame.XVector.Z,
-                                   targetCFrame.YVector.X, targetCFrame.YVector.Y, targetCFrame.YVector.Z,
-                                   targetCFrame.ZVector.X, targetCFrame.ZVector.Y, targetCFrame.ZVector.Z),
-                        "Local",
-                        CFrame.new(targetPos.X, targetPos.Y, targetPos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1),
-                        "Local"
-                    }
-                )
-                task.wait(0.3)
             end
         end
 
@@ -188,7 +210,7 @@ Tab:CreateButton({
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 10})
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created (with retry scan)", Duration = 10})
     end,
 })
 
@@ -197,4 +219,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Stable rotation + retry scan", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Mixed rotations unchanged | Y flipped | Retry scan", Duration = 8})
