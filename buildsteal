@@ -1,4 +1,4 @@
--- Town Build Copier - Rotation Retry + Offsets 0,0,0 + Match Y
+-- Town Build Copier - New Rotation Retry Logic (Flip 180 if sign mismatch)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -55,8 +55,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Rotation Retry)",
-    Description = "Retries rotation if not matching",
+    Name = "🔄 Copy Build (New Rotation Retry)",
+    Description = "Flip 180° if sign mismatch",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -94,7 +94,7 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "With rotation retry", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "New rotation retry logic", Duration = 6})
 
         local createdParts = {}
 
@@ -127,7 +127,7 @@ Tab:CreateButton({
                 )
                 task.wait(0.4)
 
-                -- Rotation with retry
+                -- Rotation with new retry logic
                 local maxRetries = 3
                 for attempt = 1, maxRetries do
                     remote:InvokeServer("SyncRotate",
@@ -144,18 +144,38 @@ Tab:CreateButton({
                     )
                     task.wait(0.3)
 
-                    -- Check if rotation matches
-                    local currentRot = newPart.CFrame.Rotation
+                    -- Check sign of rotation (simple way)
                     local sourceRot = sourcePart.CFrame.Rotation
+                    local newRot = newPart.CFrame.Rotation
 
-                    local angleDiff = (currentRot:ToEulerAnglesXYZ() - sourceRot:ToEulerAnglesXYZ()).Magnitude
+                    local sourceX, sourceY, sourceZ = sourceRot:ToEulerAnglesXYZ()
+                    local newX, newY, newZ = newRot:ToEulerAnglesXYZ()
 
-                    if angleDiff < 0.1 then  -- close enough
+                    local signMismatch = false
+                    if (sourceX > 0 and newX < 0) or (sourceX < 0 and newX > 0) then signMismatch = true end
+                    if (sourceY > 0 and newY < 0) or (sourceY < 0 and newY > 0) then signMismatch = true end
+                    if (sourceZ > 0 and newZ < 0) or (sourceZ < 0 and newZ > 0) then signMismatch = true end
+
+                    if not signMismatch then
                         break
                     end
 
-                    if attempt == maxRetries then
-                        warn("Rotation retry failed for part", attempt)
+                    -- If sign mismatch, try flipping 180 degrees
+                    if attempt < maxRetries then
+                        local flipCFrame = targetCFrame * CFrame.Angles(0, math.pi, 0)  -- 180 degrees on Y
+                        remote:InvokeServer("SyncRotate",
+                            {{ Part = newPart, CFrame = flipCFrame }},
+                            {
+                                "AroundPivot",
+                                CFrame.new(0, 0, 0, flipCFrame.XVector.X, flipCFrame.XVector.Y, flipCFrame.XVector.Z,
+                                           flipCFrame.YVector.X, flipCFrame.YVector.Y, flipCFrame.YVector.Z,
+                                           flipCFrame.ZVector.X, flipCFrame.ZVector.Y, flipCFrame.ZVector.Z),
+                                "Local",
+                                CFrame.new(targetPos.X, targetPos.Y, targetPos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                                "Local"
+                            }
+                        )
+                        task.wait(0.3)
                     end
                 end
 
@@ -178,4 +198,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Offsets 0,0,0 | Match Y | Rotation with retry", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "New retry logic: flip 180° on sign mismatch", Duration = 8})
