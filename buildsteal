@@ -1,4 +1,4 @@
--- Town Build Copier - Fixed Sideways Reversal + All Sides Resize
+-- Town Build Copier - Final (Working Resize + Retry Rotation + Center + Sides)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -55,8 +55,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Fixed Sideways Reversal)",
-    Description = "Fix for reversed sideways rotations",
+    Name = "🔄 Copy Build (Final Retry + Resize)",
+    Description = "Center + Sides | Retry rotation | Working resize",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -94,7 +94,7 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Fixed sideways reversal", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Final retry logic", Duration = 6})
 
         local createdParts = {}
 
@@ -120,44 +120,14 @@ Tab:CreateButton({
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- Resize (your working direction-aware logic)
-                local dx = math.abs(sourcePart.Size.X - newPart.Size.X)
-                local dy = math.abs(sourcePart.Size.Y - newPart.Size.Y)
-                local dz = math.abs(sourcePart.Size.Z - newPart.Size.Z)
-
-                local normalId = Enum.NormalId.Right
-                local axisName = "X"
-                local direction = Vector3.xAxis
-
-                if dy > dx and dy > dz then
-                    normalId = Enum.NormalId.Top
-                    axisName = "Y"
-                    direction = Vector3.yAxis
-                elseif dz > dx then
-                    normalId = Enum.NormalId.Back
-                    axisName = "Z"
-                    direction = Vector3.zAxis
-                end
-
+                -- Working resize logic from your version
                 remote:InvokeServer("SyncResize",
-                    {{ 
-                        Part = newPart, 
-                        CFrame = targetCFrame, 
-                        Size = sourcePart.Size 
-                    }},
-                    { 
-                        "ResizeFace", 
-                        normalId, 
-                        0, 
-                        Vector3.new(0, 0, 0), 
-                        axisName, 
-                        direction, 
-                        "Normal" 
-                    }
+                    {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
+                    { "ResizeFace", Enum.NormalId.Right, sourcePart.Size.X - newPart.Size.X, Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), "X", Vector3.xAxis, "Normal" }
                 )
                 task.wait(0.4)
 
-                -- Perfect rotation with sideways reversal fix
+                -- Rotation with retry + double opposite for sideways reversal
                 local maxRetries = 3
                 for attempt = 1, maxRetries do
                     remote:InvokeServer("SyncRotate",
@@ -174,21 +144,22 @@ Tab:CreateButton({
                     )
                     task.wait(0.3)
 
-                    -- Check if sideways is reversed
+                    -- Check for reversal
                     local sx, sy, sz = sourcePart.CFrame:ToEulerAnglesXYZ()
                     local nx, ny, nz = newPart.CFrame:ToEulerAnglesXYZ()
 
-                    local sidewaysReversed = false
-                    if math.abs(sx) > 0.1 and (sx > 0 and nx < 0) or (sx < 0 and nx > 0) then sidewaysReversed = true end
-                    if math.abs(sz) > 0.1 and (sz > 0 and nz < 0) or (sz < 0 and nz > 0) then sidewaysReversed = true end
+                    local reversed = false
+                    if math.abs(sx) > 0.05 and ((sx > 0 and nx < 0) or (sx < 0 and nx > 0)) then reversed = true end
+                    if math.abs(sz) > 0.05 and ((sz > 0 and nz < 0) or (sz < 0 and nz > 0)) then reversed = true end
 
-                    if not sidewaysReversed then
+                    if not reversed then
                         break
                     end
 
-                    -- Fix reversed sideways by flipping 180 degrees on Y
+                    -- Double opposite retry
                     if attempt < maxRetries then
-                        local flipCFrame = targetCFrame * CFrame.Angles(0, math.pi, 0)
+                        local correction = -2 * sx   -- double and opposite
+                        local flipCFrame = targetCFrame * CFrame.Angles(0, correction, 0)
                         remote:InvokeServer("SyncRotate",
                             {{ Part = newPart, CFrame = flipCFrame }},
                             {
@@ -224,4 +195,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Offsets 0,0,0 | Match Y | Fixed sideways reversal", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Offsets 0,0,0 | Match Y | Retry for sideways reversal", Duration = 8})
