@@ -1,4 +1,4 @@
--- Town Build Copier - Exact Data Rotation + Strong Resize Retry
+-- Town Build Copier - Rotation Last + Double Pass (Fix Auto-Correct)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -55,8 +55,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Exact Rotation + Strong Retry)",
-    Description = "Exact Data rotation | Strong resize retry",
+    Name = "🔄 Copy Build (Rotation Last + Double Pass)",
+    Description = "Rotation applied last + double pass to fight auto-correct",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -94,7 +94,7 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Exact rotation + strong retry", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Rotation last + double pass", Duration = 6})
 
         local createdParts = {}
         local processed = {}
@@ -145,7 +145,7 @@ Tab:CreateButton({
 
                 local sourceSize = sourcePart.Size
 
-                -- Resize Direct X Y Z
+                -- Resize
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
                 task.wait(0.25)
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
@@ -153,7 +153,11 @@ Tab:CreateButton({
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
                 task.wait(0.25)
 
-                -- Exact Rotation from Data (no flips)
+                -- Move first
+                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                task.wait(0.3)
+
+                -- Rotation LAST (double pass to fight auto-correct)
                 remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotX), "X" })
                 task.wait(0.25)
                 remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotY), "Y" })
@@ -161,22 +165,25 @@ Tab:CreateButton({
                 remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotZ), "Z" })
                 task.wait(0.25)
 
-                -- Move
-                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                -- Second rotation pass
                 task.wait(0.3)
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotX), "X" })
+                task.wait(0.15)
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotY), "Y" })
+                task.wait(0.15)
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotZ), "Z" })
+                task.wait(0.15)
             end
         end
 
-        -- Strong Retry Scan
-        Rayfield:Notify({Title = "Retry Scan", Content = "Fixing resize and any wrong rotations...", Duration = 5})
+        -- Final Retry Scan
+        Rayfield:Notify({Title = "Final Retry Scan", Content = "Fixing any remaining issues...", Duration = 5})
         for _, entry in ipairs(processed) do
             local newPart = entry.newPart
             if newPart and newPart.Parent then
-                local sourcePart = entry.sourcePart
+                local sourceSize = entry.sourcePart.Size
                 local targetCFrame = entry.targetCFrame
-                local sourceSize = sourcePart.Size
 
-                -- Re-apply resize if off
                 local sizeDiff = (newPart.Size - sourceSize).Magnitude
                 if sizeDiff > 0.3 then
                     remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
@@ -187,19 +194,13 @@ Tab:CreateButton({
                     task.wait(0.2)
                 end
 
-                -- Re-apply rotation if wrong (including the + / - Y issue)
-                local currentRot = newPart.CFrame:ToEulerAnglesXYZ()
-                local sourceRot = sourcePart.CFrame:ToEulerAnglesXYZ()
-                local rotDiff = math.abs(currentRot[1] - sourceRot[1]) + math.abs(currentRot[2] - sourceRot[2]) + math.abs(currentRot[3] - sourceRot[3])
-
-                if rotDiff > 0.3 then
-                    remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(entry.rotX), "X" })
-                    task.wait(0.2)
-                    remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(entry.rotY), "Y" })
-                    task.wait(0.2)
-                    remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(entry.rotZ), "Z" })
-                    task.wait(0.2)
-                end
+                -- Re-apply rotation
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(entry.rotX), "X" })
+                task.wait(0.2)
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(entry.rotY), "Y" })
+                task.wait(0.2)
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(entry.rotZ), "Z" })
+                task.wait(0.2)
             end
         end
 
@@ -207,7 +208,7 @@ Tab:CreateButton({
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created with retry scan", Duration = 10})
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 10})
     end,
 })
 
@@ -216,4 +217,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Exact Data rotation (no flips) + strong retry scan", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Rotation last + double pass + retry scan", Duration = 8})
