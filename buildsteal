@@ -1,9 +1,9 @@
--- Town Build Copier - Rotation from Part.Rotation Property + Debug
+-- Town Build Copier - Fixed CFrame Rotation Property + Debug
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Property Rotation",
+    Name = "Town Plot Copier - Fixed Rotation",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -66,8 +66,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Property.Rotation)",
-    Description = "Reads Rotation property directly",
+    Name = "🔄 Copy Build (Fixed CFrame Rotation)",
+    Description = "Reads Rotation as CFrame property",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -122,26 +122,17 @@ Tab:CreateButton({
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
 
-            -- Read Rotation property directly from the part
+            -- Read Rotation property (CFrame)
             local rotX, rotY, rotZ = 0, 0, 0
-            if sourcePart:FindFirstChild("Rotation") or sourcePart:GetAttribute("Rotation") then
-                local rotValue = sourcePart.Rotation or sourcePart:GetAttribute("Rotation")
-                if typeof(rotValue) == "Vector3" then
-                    rotX = rotValue.X
-                    rotY = rotValue.Y
-                    rotZ = rotValue.Z
-                    log(string.format("Part %d | Rotation property (Vector3): %.2f, %.2f, %.2f", i, rotX, rotY, rotZ))
-                elseif typeof(rotValue) == "CFrame" then
-                    local rx, ry, rz = rotValue:ToEulerAnglesXYZ()
-                    rotX = math.deg(rx)
-                    rotY = math.deg(ry)
-                    rotZ = math.deg(rz)
-                    log(string.format("Part %d | Rotation property (CFrame): %.2f, %.2f, %.2f", i, rotX, rotY, rotZ))
-                else
-                    log("Part " .. i .. " | Rotation property exists but unknown type")
-                end
+            if sourcePart.Rotation then
+                local cframe = sourcePart.Rotation
+                local rx, ry, rz = cframe:ToEulerAnglesXYZ()
+                rotX = math.deg(rx)
+                rotY = math.deg(ry)
+                rotZ = math.deg(rz)
+                log(string.format("Part %d | Rotation property (CFrame): %.2f, %.2f, %.2f", i, rotX, rotY, rotZ))
             else
-                log("Part " .. i .. " | No Rotation property found - using CFrame fallback")
+                log("Part " .. i .. " | No Rotation property - using fallback")
                 local sx, sy, sz = sourcePart.CFrame:ToEulerAnglesXYZ()
                 rotX = math.deg(sx)
                 rotY = math.deg(sy)
@@ -236,4 +227,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Rotation from Part.Rotation property + full debug", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Rotation from Part.Rotation (CFrame) + full debug", Duration = 8})
