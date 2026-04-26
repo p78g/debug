@@ -1,9 +1,9 @@
--- Town Build Copier - Final Reliable Version (Single-axis Direct + Mixed AroundPivot)
+-- Town Build Copier - Tuned Simple Version (Your Base + Rotation Property Fix)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Final",
+    Name = "Town Plot Copier - Tuned Simple",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -34,6 +34,9 @@ end
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
 local localBuildFolder = localBuildArea:WaitForChild("Build")
 
+local X_OFFSET = 0
+local Z_OFFSET = 0
+
 local selectedPlayer = nil
 
 local playerOptions = {}
@@ -60,8 +63,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build",
-    Description = "Single-axis Direct | Mixed AroundPivot + Aggressive Resize",
+    Name = "🔄 Copy Build (Tuned Simple)",
+    Description = "Your simple base + Rotation property fix",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -74,10 +77,12 @@ Tab:CreateButton({
 
         local remote = getRemote()
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
-        if not sourceArea then return end
+        if not sourceArea then
+            Rayfield:Notify({Title = "Error", Content = "Source not found"})
+            return
+        end
 
         local sourceBuild = sourceArea:WaitForChild("Build")
-
         local allParts = {}
         local function collect(obj)
             for _, v in ipairs(obj:GetDescendants()) do
@@ -86,7 +91,10 @@ Tab:CreateButton({
         end
         collect(sourceBuild)
 
-        log("Found " .. #allParts .. " BaseParts")
+        if #allParts == 0 then
+            Rayfield:Notify({Title = "Error", Content = "No parts found"})
+            return
+        end
 
         local sumX, sumY, sumZ = 0, 0, 0
         for _, p in ipairs(allParts) do
@@ -95,19 +103,26 @@ Tab:CreateButton({
         end
         local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
 
-        local destOrigin = localBuildArea.Position + Vector3.new(0, sourceCenter.Y - localBuildArea.Position.Y, 0)
+        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
         local createdParts = {}
 
-        for i, sourcePart in ipairs(allParts) do
+        for _, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
 
+            -- Read Rotation from property (Vector3)
             local rotX, rotY, rotZ = 0, 0, 0
             if sourcePart.Rotation and typeof(sourcePart.Rotation) == "Vector3" then
                 rotX = sourcePart.Rotation.X
                 rotY = sourcePart.Rotation.Y
                 rotZ = sourcePart.Rotation.Z
+                log(string.format("Part | Rotation Vector3: %.2f, %.2f, %.2f", rotX, rotY, rotZ))
+            else
+                local sx, sy, sz = sourcePart.CFrame:ToEulerAnglesXYZ()
+                rotX = math.deg(sx)
+                rotY = math.deg(sy)
+                rotZ = math.deg(sz)
             end
 
             local targetCFrame = CFrame.new(targetPos) * CFrame.fromEulerAnglesXYZ(math.rad(rotX), math.rad(rotY), math.rad(rotZ))
@@ -128,41 +143,25 @@ Tab:CreateButton({
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
-
                 local sourceSize = sourcePart.Size
 
-                -- Aggressive resize
-                task.wait(0.4)
-                for _ = 1, 5 do
-                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
-                    task.wait(0.15)
-                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
-                    task.wait(0.15)
-                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
-                    task.wait(0.15)
-                end
+                -- Resize Direct (your working order)
+                remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
+                task.wait(0.25)
+                remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
+                task.wait(0.25)
+                remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
+                task.wait(0.25)
 
-                -- Smart Rotation
-                local nonZeroAxes = 0
-                if math.abs(rotX) > 2 then nonZeroAxes += 1 end
-                if math.abs(rotY) > 2 then nonZeroAxes += 1 end
-                if math.abs(rotZ) > 2 then nonZeroAxes += 1 end
+                -- Rotation Direct (your working method)
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotX), "X" })
+                task.wait(0.25)
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotY), "Y" })
+                task.wait(0.25)
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotZ), "Z" })
+                task.wait(0.25)
 
-                if nonZeroAxes <= 1 then
-                    remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotX), "X" })
-                    task.wait(0.3)
-                    remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotY), "Y" })
-                    task.wait(0.3)
-                    remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotZ), "Z" })
-                    task.wait(0.3)
-                else
-                    remote:InvokeServer("SyncRotate", 
-                        {{ Part = newPart, CFrame = targetCFrame }},
-                        { "AroundPivot", targetCFrame.Rotation, "Center", CFrame.new(), "Center" }
-                    )
-                    task.wait(0.6)
-                end
-
+                -- Move
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
                 task.wait(0.3)
             end
@@ -173,19 +172,13 @@ Tab:CreateButton({
         end
 
         log("=== COPY FINISHED ===")
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 8})
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created (simple pass)", Duration = 10})
     end,
 })
 
-Tab:CreateButton({ Name = "Refresh Player List", Callback = refreshPlayers })
+Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
+    refreshPlayers()
+    Dropdown:Refresh(playerOptions)
+end })
 
-Tab:CreateButton({
-    Name = "📋 Copy Debug Log",
-    Callback = function()
-        local text = table.concat(DebugLog, "\n")
-        if setclipboard then setclipboard(text) end
-        Rayfield:Notify({Title = "Copied", Content = "Log copied", Duration = 5})
-    end,
-})
-
-Rayfield:Notify({Title = "Loaded", Content = "Smart single vs mixed rotation", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Your simple base with Rotation property fix", Duration = 8})
