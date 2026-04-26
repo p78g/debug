@@ -1,4 +1,4 @@
--- Town Build Copier - Exact Size + Flipped Direct Rotation
+-- Town Build Copier - Only X (Sideways) Rotation Flipped + Exact Size
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -55,8 +55,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Exact Size + Flipped Rotation)",
-    Description = "Fixed inverted rotation + exact size from attributes",
+    Name = "🔄 Copy Build (Only X Sideways Flipped)",
+    Description = "X rotation flipped | Exact size | Fixed error",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -94,14 +94,15 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Exact size + flipped rotation", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Only X sideways flipped", Duration = 6})
 
         local createdParts = {}
 
         for _, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
-            local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
+            local sourceCFrame = sourcePart.CFrame
+            local targetCFrame = CFrame.new(targetPos) * sourceCFrame.Rotation
 
             local partType = "Normal"
             local class = sourcePart.ClassName
@@ -120,7 +121,7 @@ Tab:CreateButton({
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                local sourceSize = sourcePart.Size   -- Exact size from attributes
+                local sourceSize = sourcePart.Size
 
                 -- Exact Direct Resize X, Y, Z
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
@@ -132,16 +133,21 @@ Tab:CreateButton({
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
                 task.wait(0.25)
 
-                -- Flipped Rotation (invert sign to fix inversion)
-                local flippedCFrame = CFrame.new(targetPos) * (sourcePart.CFrame.Rotation * CFrame.Angles(0, math.pi, 0))  -- 180° flip on Y to correct inversion
+                -- Rotation: Only flip X (sideways) axis
+                local sx, sy, sz = sourceCFrame:ToEulerAnglesXYZ()
+                local finalCFrame = targetCFrame
+                if math.abs(sx) > 0.05 then
+                    -- Flip only the X rotation
+                    finalCFrame = CFrame.new(targetPos) * CFrame.fromEulerAnglesXYZ(-sx, sy, sz)
+                end
 
                 remote:InvokeServer("SyncRotate",
-                    {{ Part = newPart, CFrame = flippedCFrame }},
+                    {{ Part = newPart, CFrame = finalCFrame }},
                     {
                         "AroundPivot",
-                        CFrame.new(0, 0, 0, flippedCFrame.XVector.X, flippedCFrame.XVector.Y, flippedCFrame.XVector.Z,
-                                   flippedCFrame.YVector.X, flippedCFrame.YVector.Y, flippedCFrame.YVector.Z,
-                                   flippedCFrame.ZVector.X, flippedCFrame.ZVector.Y, flippedCFrame.ZVector.Z),
+                        CFrame.new(0, 0, 0, finalCFrame.XVector.X, finalCFrame.XVector.Y, finalCFrame.XVector.Z,
+                                   finalCFrame.YVector.X, finalCFrame.YVector.Y, finalCFrame.YVector.Z,
+                                   finalCFrame.ZVector.X, finalCFrame.ZVector.Y, finalCFrame.ZVector.Z),
                         "Local",
                         CFrame.new(targetPos.X, targetPos.Y, targetPos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1),
                         "Local"
@@ -150,7 +156,7 @@ Tab:CreateButton({
                 task.wait(0.4)
 
                 -- Move
-                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = flippedCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = finalCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
                 task.wait(0.4)
             end
         end
@@ -168,4 +174,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Exact size from attributes + Flipped rotation fix", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Only X sideways flipped | Exact size", Duration = 8})
