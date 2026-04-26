@@ -1,9 +1,9 @@
--- Town Build Copier - Simple + Debug + Copy Button
+-- Town Build Copier - Exact Rotation from Data (180° preserved) + Debug
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Debug Mode",
+    Name = "Town Plot Copier - Debug",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -18,9 +18,10 @@ local BUILDING_AREAS = Workspace:WaitForChild("Private Building Areas")
 
 local DebugLog = {}
 
-local function log(text)
-    table.insert(DebugLog, os.date("%X") .. " | " .. text)
-    print("[Copier Debug] " .. text)
+local function log(msg)
+    local line = os.date("%X") .. " | " .. msg
+    table.insert(DebugLog, line)
+    print("[Copier] " .. msg)
 end
 
 local function getRemote()
@@ -66,16 +67,16 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Simple - No Retry)",
-    Description = "Simple pass - no retry scan",
+    Name = "🔄 Copy Build (Exact 180° Rotation)",
+    Description = "Preserves 180° | Exact from Data",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
             return
         end
 
-        DebugLog = {} -- Clear previous log
-        log("=== STARTING COPY ===")
+        DebugLog = {}  -- Clear old log
+        log("=== COPY STARTED ===")
         log("Selected player: " .. selectedPlayer.Name)
 
         local remote = getRemote()
@@ -87,19 +88,17 @@ Tab:CreateButton({
         end
 
         local sourceBuild = sourceArea:WaitForChild("Build")
-        log("Source build folder found with " .. #sourceBuild:GetDescendants() .. " descendants")
+        log("Source build folder found")
 
         local allParts = {}
         local function collect(obj)
             for _, v in ipairs(obj:GetDescendants()) do
-                if v:IsA("BasePart") then 
-                    table.insert(allParts, v) 
-                end
+                if v:IsA("BasePart") then table.insert(allParts, v) end
             end
         end
         collect(sourceBuild)
 
-        log("Found " .. #allParts .. " BaseParts to copy")
+        log("Found " .. #allParts .. " BaseParts")
 
         if #allParts == 0 then
             log("ERROR: No parts found")
@@ -113,7 +112,7 @@ Tab:CreateButton({
             sumX += pos.X; sumY += pos.Y; sumZ += pos.Z
         end
         local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
-        log("Source center calculated: " .. tostring(sourceCenter))
+        log("Source center: " .. tostring(sourceCenter))
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
         log("Destination origin: " .. tostring(destOrigin))
@@ -124,9 +123,7 @@ Tab:CreateButton({
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
 
-            log(string.format("Part %d/%d | Source Pos: %s | Target Pos: %s", i, #allParts, tostring(sourcePart.Position), tostring(targetPos)))
-
-            -- Get rotation from Data
+            -- Exact rotation from Data (preserve 180° etc.)
             local rotX, rotY, rotZ = 0, 0, 0
             local data = sourcePart:FindFirstChild("Data")
             if data and data:IsA("StringValue") then
@@ -140,7 +137,8 @@ Tab:CreateButton({
                     rotZ = nums[3] or 0
                 end
             end
-            log(string.format("  Rotation from Data: %.2f, %.2f, %.2f", rotX, rotY, rotZ))
+
+            log(string.format("Part %d/%d | Rotation: %.2f, %.2f, %.2f", i, #allParts, rotX, rotY, rotZ))
 
             local targetCFrame = CFrame.new(targetPos) * CFrame.fromEulerAnglesXYZ(math.rad(rotX), math.rad(rotY), math.rad(rotZ))
 
@@ -156,11 +154,13 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
+            log("  Creating part as " .. partType)
+
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
-                log(string.format("  ✓ Created part %d | Type: %s | Size: %s", i, partType, tostring(newPart.Size)))
+                log("  ✓ Created part successfully | Current Size: " .. tostring(newPart.Size))
 
                 local sourceSize = sourcePart.Size
 
@@ -184,9 +184,9 @@ Tab:CreateButton({
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
                 task.wait(0.3)
 
-                log(string.format("  Finished part %d", i))
+                log("  Finished part " .. i)
             else
-                log(string.format("  ✗ Failed to create part %d", i))
+                log("  ✗ Failed to create part " .. i)
             end
         end
 
@@ -196,23 +196,23 @@ Tab:CreateButton({
         end
 
         log("=== COPY FINISHED ===")
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 10})
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 8})
     end,
 })
 
--- Debug Button
+-- ================== DEBUG BUTTON ==================
 Tab:CreateButton({
-    Name = "📋 Copy Debug Info to Clipboard",
-    Description = "Copy all console logs",
+    Name = "📋 Copy Debug Log",
+    Description = "Copy all debug information to clipboard",
     Callback = function()
-        local debugText = table.concat(DebugLog, "\n")
+        local text = table.concat(DebugLog, "\n")
         if setclipboard then
-            setclipboard(debugText)
-            Rayfield:Notify({Title = "Debug Copied", Content = "Debug log copied to clipboard!", Duration = 5})
+            setclipboard(text)
+            Rayfield:Notify({Title = "Success", Content = "Debug log copied to clipboard!", Duration = 5})
         else
-            Rayfield:Notify({Title = "Error", Content = "setclipboard not supported in this executor", Duration = 5})
+            Rayfield:Notify({Title = "Warning", Content = "setclipboard not supported in this executor", Duration = 5})
         end
-        print("=== FULL DEBUG LOG ===\n" .. debugText)
+        print("=== FULL DEBUG LOG ===\n" .. text)
     end,
 })
 
@@ -221,4 +221,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Simple pass with debug logging", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Exact Data rotation (180° preserved) + Debug", Duration = 8})
