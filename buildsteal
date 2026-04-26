@@ -1,4 +1,4 @@
--- Town Build Copier - Create High → Rotate → Sequential Move (0.3s) → Resize
+-- Town Build Copier - Create High → Rotate → Correct Sequential Move → Resize
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -53,7 +53,7 @@ local Dropdown = Tab:CreateDropdown({
 
 Tab:CreateButton({
     Name = "🔄 Copy Build (Create High → Rotate → Sequential Move → Resize)",
-    Description = "Move one by one with 0.3s delay",
+    Description = "Correct mirror move with 0.3s delay",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -91,10 +91,10 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(0, sourceCenter.Y - localBuildArea.Position.Y, 0)
 
-        -- Safe creation point 20 studs up in center
+        -- Safe creation point 20 studs up in center of your plot
         local safeCreatePos = localBuildArea.Position + Vector3.new(0, 20, 0)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Create high → Rotate → Sequential Move (0.3s) → Resize", Duration = 8})
+        Rayfield:Notify({Title = "Copying...", Content = "Create high → Rotate → Sequential Move → Resize", Duration = 8})
 
         local createdParts = {}
 
@@ -145,10 +145,13 @@ Tab:CreateButton({
                 remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotZ), "Z" })
                 task.wait(0.3)
 
-                -- 3. Move one by one with 0.3s delay (your Direct move)
+                -- 3. Sequential Move with 0.3s delay using your Direct move remote
+                -- Calculate the mirror offset for this part
+                local moveOffset = finalTargetPos - newPart.Position
+
                 remote:InvokeServer("SyncMove", 
                     {{ Part = newPart, CFrame = targetCFrame }},
-                    { "Direct", Vector3.new(0, 0, 0), "X", targetCFrame }
+                    { "Direct", moveOffset, "X", targetCFrame }
                 )
                 task.wait(0.3)
 
@@ -176,4 +179,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Create high → Rotate → Sequential Move (0.3s) → Resize", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Create high → Rotate → Sequential Move (0.3s delay) → Resize", Duration = 8})
