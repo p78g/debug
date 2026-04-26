@@ -1,9 +1,9 @@
--- Town Build Copier - Minimal Clean Fix (Height + Rotation + Resize)
+-- Town Build Copier - Perfect Rotation + Full Resize All Sides (Offsets 0,0,0)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Copier - Height + Rotation Fix",
+    Name = "Town Plot Copier",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -26,10 +26,9 @@ end
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
 local localBuildFolder = localBuildArea:WaitForChild("Build")
 
-local BASE_Y = 5          -- Fixed +5 studs on Y
-local X_OFFSET = -28.637
-local Z_OFFSET = -17.512
-local EXTRA_Y = 0
+local X_OFFSET = 0
+local Z_OFFSET = 0
+local EXTRA_Y = 0   -- We'll match original Y level
 
 local selectedPlayer = nil
 
@@ -56,23 +55,21 @@ local Dropdown = Tab:CreateDropdown({
     end,
 })
 
-Tab:CreateSection("Offsets")
-Tab:CreateSlider({ Name = "X Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = X_OFFSET, Callback = function(v) X_OFFSET = v end })
-Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, CurrentValue = EXTRA_Y, Callback = function(v) EXTRA_Y = v end })
-Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
-
 Tab:CreateButton({
-    Name = "🔄 Copy Build - Clean Fix",
-    Description = "Fixed Height + Rotation + Resize Attempt",
+    Name = "🔄 Copy Build (Offsets 0,0,0 + Match Y)",
+    Description = "Perfect rotation + resize on all sides",
     Callback = function()
         if not selectedPlayer then
-            Rayfield:Notify({Title = "Error", Content = "Select player first!"}) 
-            return 
+            Rayfield:Notify({Title = "Error", Content = "Select player first!"})
+            return
         end
 
         local remote = getRemote()
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
-        if not sourceArea then return Rayfield:Notify({Title = "Error", Content = "Source not found"}) end
+        if not sourceArea then 
+            Rayfield:Notify({Title = "Error", Content = "Source not found"}) 
+            return 
+        end
 
         local sourceBuild = sourceArea:WaitForChild("Build")
 
@@ -89,7 +86,7 @@ Tab:CreateButton({
             return 
         end
 
-        -- Source center
+        -- Calculate source center to match relative Y
         local sumX, sumY, sumZ = 0, 0, 0
         for _, p in ipairs(allParts) do
             local pos = p.Position
@@ -97,18 +94,16 @@ Tab:CreateButton({
         end
         local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
 
-        -- FIXED Y HEIGHT
-        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
+        -- Match original Y level + zero offsets
+        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Starting Copy", Content = "Y = +5 | Trying rotation + resize", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Matching original height + resizing all sides", Duration = 6})
 
         local createdParts = {}
 
         for _, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
-
-            -- Proper rotation using full source CFrame rotation
             local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
 
             local partType = "Normal"
@@ -123,26 +118,66 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            -- Create Part
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- Rotation
-                remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
-                task.wait(0.5)
+                -- Direction-aware resize using your exact remotes
+                local dx = math.abs(sourcePart.Size.X - newPart.Size.X)
+                local dy = math.abs(sourcePart.Size.Y - newPart.Size.Y)
+                local dz = math.abs(sourcePart.Size.Z - newPart.Size.Z)
 
-                -- Move (force position)
-                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
-                task.wait(0.5)
+                local normalId = Enum.NormalId.Right
+                local axisName = "X"
+                local direction = Vector3.xAxis
 
-                -- Resize - More direct attempt
-                remote:InvokeServer("SyncResize", 
-                    {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
-                    { "ResizeFace", Enum.NormalId.Right, sourcePart.Size.X - newPart.Size.X, Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), "X", Vector3.xAxis, "Normal" }
+                if dy > dx and dy > dz then
+                    normalId = Enum.NormalId.Top
+                    axisName = "Y"
+                    direction = Vector3.yAxis
+                elseif dz > dx then
+                    normalId = Enum.NormalId.Back
+                    axisName = "Z"
+                    direction = Vector3.zAxis
+                end
+
+                remote:InvokeServer("SyncResize",
+                    {{ 
+                        Part = newPart, 
+                        CFrame = targetCFrame, 
+                        Size = sourcePart.Size 
+                    }},
+                    { 
+                        "ResizeFace", 
+                        normalId, 
+                        0, 
+                        Vector3.new(0, 0, 0), 
+                        axisName, 
+                        direction, 
+                        "Normal" 
+                    }
                 )
-                task.wait(0.6)
+                task.wait(0.4)
+
+                -- Your perfect rotation (keep this exactly)
+                remote:InvokeServer("SyncRotate",
+                    {{ Part = newPart, CFrame = targetCFrame }},
+                    {
+                        "AroundPivot",
+                        CFrame.new(0, 0, 0, targetCFrame.XVector.X, targetCFrame.XVector.Y, targetCFrame.XVector.Z,
+                                   targetCFrame.YVector.X, targetCFrame.YVector.Y, targetCFrame.YVector.Z,
+                                   targetCFrame.ZVector.X, targetCFrame.ZVector.Y, targetCFrame.ZVector.Z),
+                        "Local",
+                        CFrame.new(targetPos.X, targetPos.Y, targetPos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                        "Local"
+                    }
+                )
+                task.wait(0.4)
+
+                -- Move
+                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                task.wait(0.4)
             end
         end
 
@@ -150,13 +185,13 @@ Tab:CreateButton({
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        Rayfield:Notify({Title = "Done", Content = #createdParts .. " parts created", Duration = 8})
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 8})
     end,
 })
 
-Tab:CreateButton({ Name = "Refresh List", Callback = function()
+Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     refreshPlayers()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Clean Fix Loaded", Content = "Y forced to +5 | Better rotation + resize", Duration = 8})    
+Rayfield:Notify({Title = "Loaded", Content = "Offsets 0,0,0 | Match original Y | Resize all sides", Duration = 8})
