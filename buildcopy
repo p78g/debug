@@ -1,9 +1,9 @@
--- Town Build Copier - Exact Data Rotation (No Flips At All)
+-- Town Build Copier - Simple No-Retry Version
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier",
+    Name = "Town Plot Copier - Simple",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -55,8 +55,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Exact Data Rotation - No Flips)",
-    Description = "Exact rotation from Data | No flips on any axis",
+    Name = "🔄 Copy Build (Simple - No Retry)",
+    Description = "Simple pass - no retry scan",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -94,16 +94,15 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Exact Data rotation - no flips", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Simple pass - no retry", Duration = 6})
 
         local createdParts = {}
-        local processed = {}
 
         for _, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
 
-            -- Get exact rotation from Data attribute (X, Y, Z in degrees)
+            -- Get exact rotation from Data attribute
             local rotX, rotY, rotZ = 0, 0, 0
             local data = sourcePart:FindFirstChild("Data")
             if data and data:IsA("StringValue") then
@@ -117,7 +116,6 @@ Tab:CreateButton({
                     rotZ = nums[3] or 0
                 end
             else
-                -- Fallback to CFrame
                 local sx, sy, sz = sourcePart.CFrame:ToEulerAnglesXYZ()
                 rotX = math.deg(sx)
                 rotY = math.deg(sy)
@@ -138,23 +136,25 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
+            -- Create at final position
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
-                table.insert(processed, {newPart = newPart, sourcePart = sourcePart, targetCFrame = targetCFrame})
 
                 local sourceSize = sourcePart.Size
 
                 -- Resize Direct
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
                 task.wait(0.25)
+
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
                 task.wait(0.25)
+
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
                 task.wait(0.25)
 
-                -- Exact Rotation from Data (No flips)
+                -- Rotation from Data (exact, no flips)
                 remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotX), "X" })
                 task.wait(0.25)
                 remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotY), "Y" })
@@ -168,30 +168,11 @@ Tab:CreateButton({
             end
         end
 
-        -- Retry Scan
-        Rayfield:Notify({Title = "Retry Scan", Content = "Fixing any missed parts...", Duration = 5})
-        for _, entry in ipairs(processed) do
-            local newPart = entry.newPart
-            if newPart and newPart.Parent then
-                local sourceSize = entry.sourcePart.Size
-                local sizeDiff = (newPart.Size - sourceSize).Magnitude
-                if sizeDiff > 0.5 then
-                    local tc = entry.targetCFrame
-                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = tc, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
-                    task.wait(0.2)
-                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = tc, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
-                    task.wait(0.2)
-                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = tc, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
-                    task.wait(0.2)
-                end
-            end
-        end
-
         if #createdParts > 0 then
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 10})
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created (simple pass)", Duration = 10})
     end,
 })
 
@@ -200,4 +181,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Exact rotation from Data - no flips", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Simple pass - no retry", Duration = 8})
