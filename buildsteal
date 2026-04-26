@@ -1,9 +1,9 @@
--- Town Build Copier - New System: Create High → Rotate → Move → Resize
+-- Town Build Copier - Create → Rotate → Move → Resize (Exact Order You Want)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - New System",
+    Name = "Town Plot Copier",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -55,8 +55,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Create High → Rotate → Move → Resize)",
-    Description = "New system as requested",
+    Name = "🔄 Copy Build (Create → Rotate → Move → Resize)",
+    Description = "Exact order you requested",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -94,11 +94,11 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Create high → Rotate → Move → Resize", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Create → Rotate → Move → Resize", Duration = 6})
 
         local createdParts = {}
 
-        -- Safe creation point 20 studs up in center
+        -- Safe creation point (20 studs up in center of your plot)
         local safeCreatePos = localBuildArea.Position + Vector3.new(0, 20, 0)
 
         for _, sourcePart in ipairs(allParts) do
@@ -118,7 +118,7 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            -- 1. Create high up in center
+            -- 1. Create part high up
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(safeCreatePos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
@@ -143,7 +143,7 @@ Tab:CreateButton({
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
                 task.wait(0.4)
 
-                -- 4. Resize
+                -- 4. Resize last
                 remote:InvokeServer("SyncResize",
                     {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
                     { "ResizeFace", Enum.NormalId.Right, sourcePart.Size.X - newPart.Size.X, Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), "X", Vector3.xAxis, "Normal" }
