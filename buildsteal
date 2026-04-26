@@ -1,9 +1,9 @@
--- Town Build Copier - Resize Working + Rotation Fix Attempt 2
+-- Town Build Copier - Minimal Clean Fix (Height + Rotation + Resize)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Copier - Rotation Fix",
+    Name = "Town Copier - Height + Rotation Fix",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -26,7 +26,7 @@ end
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
 local localBuildFolder = localBuildArea:WaitForChild("Build")
 
-local BASE_Y = 5
+local BASE_Y = 5          -- Fixed +5 studs on Y
 local X_OFFSET = -28.637
 local Z_OFFSET = -17.512
 local EXTRA_Y = 0
@@ -62,11 +62,11 @@ Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, Current
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build - Rotation Fix",
-    Description = "Resize working | Trying better rotation",
+    Name = "🔄 Copy Build - Clean Fix",
+    Description = "Fixed Height + Rotation + Resize Attempt",
     Callback = function()
         if not selectedPlayer then
-            Rayfield:Notify({Title = "Error", Content = "Select player!"}) 
+            Rayfield:Notify({Title = "Error", Content = "Select player first!"}) 
             return 
         end
 
@@ -89,6 +89,7 @@ Tab:CreateButton({
             return 
         end
 
+        -- Source center
         local sumX, sumY, sumZ = 0, 0, 0
         for _, p in ipairs(allParts) do
             local pos = p.Position
@@ -96,9 +97,10 @@ Tab:CreateButton({
         end
         local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
 
+        -- FIXED Y HEIGHT
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Applying improved rotation...", Duration = 6})
+        Rayfield:Notify({Title = "Starting Copy", Content = "Y = +5 | Trying rotation + resize", Duration = 6})
 
         local createdParts = {}
 
@@ -106,6 +108,7 @@ Tab:CreateButton({
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
 
+            -- Proper rotation using full source CFrame rotation
             local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
 
             local partType = "Normal"
@@ -120,29 +123,24 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
+            -- Create Part
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- Improved Rotation Call
-                remote:InvokeServer("SyncRotate", 
-                    {{ Part = newPart, CFrame = targetCFrame }},
-                    { "World", CFrame.new(), "Center", CFrame.new(), "Center" }
-                )
+                -- Rotation
+                remote:InvokeServer("SyncRotate", {{Part = newPart, CFrame = targetCFrame}}, {"AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center"})
                 task.wait(0.5)
 
-                -- Move
-                remote:InvokeServer("SyncMove", 
-                    {{ Part = newPart, CFrame = targetCFrame }},
-                    { "AlongFace", Vector3.new(), "Global", CFrame.new() }
-                )
+                -- Move (force position)
+                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
                 task.wait(0.5)
 
-                -- Resize (keep what worked)
+                -- Resize - More direct attempt
                 remote:InvokeServer("SyncResize", 
                     {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
-                    { "ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal" }
+                    { "ResizeFace", Enum.NormalId.Right, sourcePart.Size.X - newPart.Size.X, Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), "X", Vector3.xAxis, "Normal" }
                 )
                 task.wait(0.6)
             end
@@ -161,4 +159,4 @@ Tab:CreateButton({ Name = "Refresh List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Rotation Fix Loaded", Content = "Changed SyncRotate mode to 'World'", Duration = 8})
+Rayfield:Notify({Title = "Clean Fix Loaded", Content = "Y forced to +5 | Better rotation + resize", Duration = 8})    
