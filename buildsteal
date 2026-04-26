@@ -1,9 +1,9 @@
--- Town Build Copier - Fixed Rotation from Data.Rotation + Debug
+-- Town Build Copier - Rotation from Attributes.Rotation + Full Debug
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Fixed Rotation",
+    Name = "Town Plot Copier - Attributes Rotation",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -67,8 +67,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Fixed Rotation from Data.Rotation)",
-    Description = "Reads Rotation from Data folder",
+    Name = "🔄 Copy Build (Attributes.Rotation)",
+    Description = "Reads Rotation from part:GetAttribute('Rotation')",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -123,31 +123,31 @@ Tab:CreateButton({
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
 
-            -- Read Rotation from Data folder → Rotation value
+            -- Read Rotation from Attributes
             local rotX, rotY, rotZ = 0, 0, 0
-            local dataFolder = sourcePart:FindFirstChild("Data")
-            if dataFolder then
-                local rotationValue = dataFolder:FindFirstChild("Rotation")
-                if rotationValue then
-                    if rotationValue:IsA("Vector3") then
-                        rotX = rotationValue.X
-                        rotY = rotationValue.Y
-                        rotZ = rotationValue.Z
-                        log(string.format("Part %d | Data.Rotation (Vector3): %.2f, %.2f, %.2f", i, rotX, rotY, rotZ))
-                    elseif rotationValue:IsA("CFrame") then
-                        local rx, ry, rz = rotationValue:ToEulerAnglesXYZ()
-                        rotX = math.deg(rx)
-                        rotY = math.deg(ry)
-                        rotZ = math.deg(rz)
-                        log(string.format("Part %d | Data.Rotation (CFrame): %.2f, %.2f, %.2f", i, rotX, rotY, rotZ))
-                    else
-                        log("Part " .. i .. " | Data.Rotation exists but unknown type")
-                    end
+            local rotationAttr = sourcePart:GetAttribute("Rotation")
+            if rotationAttr then
+                if typeof(rotationAttr) == "Vector3" then
+                    rotX = rotationAttr.X
+                    rotY = rotationAttr.Y
+                    rotZ = rotationAttr.Z
+                    log(string.format("Part %d | Attributes.Rotation (Vector3): %.2f, %.2f, %.2f", i, rotX, rotY, rotZ))
+                elseif typeof(rotationAttr) == "CFrame" then
+                    local rx, ry, rz = rotationAttr:ToEulerAnglesXYZ()
+                    rotX = math.deg(rx)
+                    rotY = math.deg(ry)
+                    rotZ = math.deg(rz)
+                    log(string.format("Part %d | Attributes.Rotation (CFrame): %.2f, %.2f, %.2f", i, rotX, rotY, rotZ))
                 else
-                    log("Part " .. i .. " | Data folder exists but no 'Rotation' value")
+                    log("Part " .. i .. " | Rotation attribute exists but unknown type: " .. typeof(rotationAttr))
                 end
             else
-                log("Part " .. i .. " | No 'Data' folder")
+                log("Part " .. i .. " | No 'Rotation' attribute found")
+                -- Fallback
+                local sx, sy, sz = sourcePart.CFrame:ToEulerAnglesXYZ()
+                rotX = math.deg(sx)
+                rotY = math.deg(sy)
+                rotZ = math.deg(sz)
             end
 
             local targetCFrame = CFrame.new(targetPos) * CFrame.fromEulerAnglesXYZ(math.rad(rotX), math.rad(rotY), math.rad(rotZ))
@@ -164,7 +164,7 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            log(string.format("Part %d | Creating as %s at %s | Final Rotation: %.2f, %.2f, %.2f", 
+            log(string.format("Part %d | Creating as %s at %s | Rotation: %.2f, %.2f, %.2f", 
                 i, partType, tostring(targetPos), rotX, rotY, rotZ))
 
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
@@ -175,8 +175,8 @@ Tab:CreateButton({
 
                 local sourceSize = sourcePart.Size
 
-                -- Resize (aggressive)
-                for _ = 1, 2 do
+                -- Aggressive Resize
+                for _ = 1, 3 do
                     remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
                     task.wait(0.2)
                     remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
@@ -238,4 +238,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Fixed Data.Rotation parsing + full debug", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Rotation from Attributes.Rotation + full debug", Duration = 8})
