@@ -1,9 +1,9 @@
--- Town Build Copier - New System: Create High → Rotate → Move → Resize
+-- Town Build Copier - Create High → Rotate → Sequential Move (0.3s) → Resize
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - New System",
+    Name = "Town Plot Copier",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -52,8 +52,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Create High → Rotate → Move → Resize)",
-    Description = "Safe creation 20 studs up",
+    Name = "🔄 Copy Build (Create High → Rotate → Sequential Move → Resize)",
+    Description = "Move one by one with 0.3s delay",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -91,10 +91,10 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(0, sourceCenter.Y - localBuildArea.Position.Y, 0)
 
-        -- Safe creation point 20 studs up in center of your plot
+        -- Safe creation point 20 studs up in center
         local safeCreatePos = localBuildArea.Position + Vector3.new(0, 20, 0)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Create high → Rotate → Move → Resize", Duration = 8})
+        Rayfield:Notify({Title = "Copying...", Content = "Create high → Rotate → Sequential Move (0.3s) → Resize", Duration = 8})
 
         local createdParts = {}
 
@@ -131,7 +131,7 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            -- 1. Create high up in center
+            -- 1. Create high up
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(safeCreatePos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
@@ -145,11 +145,14 @@ Tab:CreateButton({
                 remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotZ), "Z" })
                 task.wait(0.3)
 
-                -- 3. Move to final position
-                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
-                task.wait(0.4)
+                -- 3. Move one by one with 0.3s delay (your Direct move)
+                remote:InvokeServer("SyncMove", 
+                    {{ Part = newPart, CFrame = targetCFrame }},
+                    { "Direct", Vector3.new(0, 0, 0), "X", targetCFrame }
+                )
+                task.wait(0.3)
 
-                -- 4. Resize (aggressive)
+                -- 4. Resize
                 local sourceSize = sourcePart.Size
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
                 task.wait(0.3)
@@ -173,4 +176,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Create high (20 studs) → Rotate → Move → Resize", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Create high → Rotate → Sequential Move (0.3s) → Resize", Duration = 8})
