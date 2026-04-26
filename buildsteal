@@ -1,9 +1,9 @@
--- Town Build Copier - Smart Rotation (Single Axis Direct | Mixed AroundPivot)
+-- Town Build Copier - Most Aggressive Final Attempt
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Smart Rotation",
+    Name = "Town Plot Copier - Aggressive Final",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -60,8 +60,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Smart Rotation)",
-    Description = "Single-axis = Direct | Mixed = AroundPivot",
+    Name = "🔄 Copy Build (Aggressive Final)",
+    Description = "Maximum force on rotation and resize",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -108,7 +108,6 @@ Tab:CreateButton({
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
 
-            -- Read Rotation Vector3
             local rotX, rotY, rotZ = 0, 0, 0
             if sourcePart.Rotation and typeof(sourcePart.Rotation) == "Vector3" then
                 rotX = sourcePart.Rotation.X
@@ -139,45 +138,41 @@ Tab:CreateButton({
 
                 local sourceSize = sourcePart.Size
 
-                -- Aggressive Resize
-                task.wait(0.3)
-                for _ = 1, 4 do
+                -- Extremely aggressive resize
+                task.wait(0.5)
+                for _ = 1, 5 do
                     remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
-                    task.wait(0.15)
+                    task.wait(0.2)
                     remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
-                    task.wait(0.15)
+                    task.wait(0.2)
                     remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
-                    task.wait(0.15)
+                    task.wait(0.2)
                 end
 
                 log("  Resize finished | Final Size: " .. tostring(newPart.Size))
 
-                -- Smart Rotation
-                local nonZeroAxes = 0
-                if math.abs(rotX) > 1 then nonZeroAxes = nonZeroAxes + 1 end
-                if math.abs(rotY) > 1 then nonZeroAxes = nonZeroAxes + 1 end
-                if math.abs(rotZ) > 1 then nonZeroAxes = nonZeroAxes + 1 end
-
-                if nonZeroAxes <= 1 then
-                    log("  Single-axis rotation - using Direct")
+                -- Strong rotation attempt
+                local nonZero = (math.abs(rotX) > 1) + (math.abs(rotY) > 1) + (math.abs(rotZ) > 1)
+                if nonZero <= 1 then
+                    log("  Single-axis - Direct")
                     remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotX), "X" })
-                    task.wait(0.25)
+                    task.wait(0.3)
                     remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotY), "Y" })
-                    task.wait(0.25)
+                    task.wait(0.3)
                     remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotZ), "Z" })
-                    task.wait(0.25)
+                    task.wait(0.3)
                 else
-                    log("  Mixed rotation - using AroundPivot")
+                    log("  Mixed - AroundPivot full")
                     remote:InvokeServer("SyncRotate", 
                         {{ Part = newPart, CFrame = targetCFrame }},
                         { "AroundPivot", targetCFrame.Rotation, "Center", CFrame.new(), "Center" }
                     )
-                    task.wait(0.5)
+                    task.wait(0.6)
                 end
 
                 -- Final move
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
-                task.wait(0.3)
+                task.wait(0.4)
 
                 log("  Part " .. i .. " complete")
             end
@@ -206,4 +201,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Smart: Single-axis Direct | Mixed AroundPivot", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Aggressive resize + smart rotation", Duration = 8})
