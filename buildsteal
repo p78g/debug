@@ -1,4 +1,4 @@
--- Town Build Copier - Rotation Last + Double Pass (Fix Auto-Correct)
+-- Town Build Copier - Aggressive Retry (Fix Skipping)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -55,8 +55,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Rotation Last + Double Pass)",
-    Description = "Rotation applied last + double pass to fight auto-correct",
+    Name = "🔄 Copy Build (Aggressive Retry - Fix Skipping)",
+    Description = "Double pass + strong retry to catch skipped blocks",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -94,16 +94,16 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Rotation last + double pass", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Aggressive retry to fix skipping", Duration = 6})
 
         local createdParts = {}
         local processed = {}
 
+        -- First pass
         for _, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
 
-            -- Exact rotation from Data
             local rotX, rotY, rotZ = 0, 0, 0
             local data = sourcePart:FindFirstChild("Data")
             if data and data:IsA("StringValue") then
@@ -142,9 +142,18 @@ Tab:CreateButton({
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
                 table.insert(processed, {newPart = newPart, sourcePart = sourcePart, targetCFrame = targetCFrame, rotX = rotX, rotY = rotY, rotZ = rotZ})
+            end
+        end
 
-                local sourceSize = sourcePart.Size
+        -- Second pass: Rotate + Resize + Move on every part
+        Rayfield:Notify({Title = "Processing parts...", Content = "Applying rotation, resize and move...", Duration = 5})
+        for _, entry in ipairs(processed) do
+            local newPart = entry.newPart
+            local sourcePart = entry.sourcePart
+            local targetCFrame = entry.targetCFrame
+            local sourceSize = sourcePart.Size
 
+            if newPart and newPart.Parent then
                 -- Resize
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
                 task.wait(0.25)
@@ -153,36 +162,28 @@ Tab:CreateButton({
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
                 task.wait(0.25)
 
-                -- Move first
+                -- Rotation
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(entry.rotX), "X" })
+                task.wait(0.25)
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(entry.rotY), "Y" })
+                task.wait(0.25)
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(entry.rotZ), "Z" })
+                task.wait(0.25)
+
+                -- Move
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
                 task.wait(0.3)
-
-                -- Rotation LAST (double pass to fight auto-correct)
-                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotX), "X" })
-                task.wait(0.25)
-                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotY), "Y" })
-                task.wait(0.25)
-                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotZ), "Z" })
-                task.wait(0.25)
-
-                -- Second rotation pass
-                task.wait(0.3)
-                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotX), "X" })
-                task.wait(0.15)
-                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotY), "Y" })
-                task.wait(0.15)
-                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotZ), "Z" })
-                task.wait(0.15)
             end
         end
 
-        -- Final Retry Scan
-        Rayfield:Notify({Title = "Final Retry Scan", Content = "Fixing any remaining issues...", Duration = 5})
+        -- Final Aggressive Retry Scan (third pass)
+        Rayfield:Notify({Title = "Final Retry Scan", Content = "Catching any remaining skipped blocks...", Duration = 6})
         for _, entry in ipairs(processed) do
             local newPart = entry.newPart
             if newPart and newPart.Parent then
-                local sourceSize = entry.sourcePart.Size
+                local sourcePart = entry.sourcePart
                 local targetCFrame = entry.targetCFrame
+                local sourceSize = sourcePart.Size
 
                 local sizeDiff = (newPart.Size - sourceSize).Magnitude
                 if sizeDiff > 0.3 then
@@ -208,7 +209,7 @@ Tab:CreateButton({
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 10})
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts processed", Duration = 10})
     end,
 })
 
@@ -217,4 +218,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Rotation last + double pass + retry scan", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Aggressive retry to prevent skipping", Duration = 8})
