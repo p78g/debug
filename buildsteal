@@ -1,9 +1,9 @@
--- Town Build Copier - Mixed Rotation Protected (Y Flipped Only)
+-- Town Build Copier - Mixed Unchanged + Y Flipped Only (Using Data)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Mixed Protected",
+    Name = "Town Plot Copier",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -55,8 +55,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Mixed Protected)",
-    Description = "Mixed = unchanged | Single Y flipped | Retry scan",
+    Name = "🔄 Copy Build (Mixed Unchanged + Y Flip)",
+    Description = "Mixed = no change | Pure Y flipped | Retry scan",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -94,7 +94,7 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Mixed protected + retry scan", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Mixed unchanged + Y flipped", Duration = 6})
 
         local createdParts = {}
         local processed = {}
@@ -103,7 +103,7 @@ Tab:CreateButton({
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
 
-            -- Get rotation from Data (X, Y, Z degrees)
+            -- Get rotation from Data attribute
             local rotX, rotY, rotZ = 0, 0, 0
             local data = sourcePart:FindFirstChild("Data")
             if data and data:IsA("StringValue") then
@@ -123,24 +123,20 @@ Tab:CreateButton({
                 rotZ = math.deg(sz)
             end
 
-            -- Detect if mixed rotation (more than one axis has significant rotation)
-            local isMixed = false
-            local activeAxes = 0
-            if math.abs(rotX) > 0.5 then activeAxes = activeAxes + 1 end
-            if math.abs(rotY) > 0.5 then activeAxes = activeAxes + 1 end
-            if math.abs(rotZ) > 0.5 then activeAxes = activeAxes + 1 end
-            if activeAxes > 1 then isMixed = true end
+            -- Detect if mixed (more than 1 axis has rotation)
+            local active = 0
+            if math.abs(rotX) > 0.5 then active = active + 1 end
+            if math.abs(rotY) > 0.5 then active = active + 1 end
+            if math.abs(rotZ) > 0.5 then active = active + 1 end
+            local isMixed = (active > 1)
 
-            -- For mixed: leave completely unchanged
-            -- For single: flip only Y (vertical)
+            -- Apply flip ONLY to pure Y rotation. Mixed and X/Z unchanged.
             local finalRotX = rotX
             local finalRotY = rotY
             local finalRotZ = rotZ
 
-            if not isMixed then
-                if math.abs(rotY) > 0.5 then
-                    finalRotY = -rotY   -- flip Y
-                end
+            if not isMixed and math.abs(rotY) > 0.5 and math.abs(rotX) < 0.5 and math.abs(rotZ) < 0.5 then
+                finalRotY = -rotY   -- flip only pure vertical
             end
 
             local targetCFrame = CFrame.new(targetPos) * CFrame.fromEulerAnglesXYZ(math.rad(finalRotX), math.rad(finalRotY), math.rad(finalRotZ))
@@ -161,11 +157,18 @@ Tab:CreateButton({
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
-                table.insert(processed, {newPart = newPart, sourcePart = sourcePart, targetCFrame = targetCFrame, finalRotX = finalRotX, finalRotY = finalRotY, finalRotZ = finalRotZ})
+                table.insert(processed, {
+                    newPart = newPart, 
+                    sourcePart = sourcePart, 
+                    targetCFrame = targetCFrame,
+                    finalRotX = finalRotX,
+                    finalRotY = finalRotY,
+                    finalRotZ = finalRotZ
+                })
 
                 local sourceSize = sourcePart.Size
 
-                -- Resize
+                -- Resize Direct
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
                 task.wait(0.25)
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
@@ -173,7 +176,7 @@ Tab:CreateButton({
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
                 task.wait(0.25)
 
-                -- Rotate
+                -- Rotate using final values
                 remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(finalRotX), "X" })
                 task.wait(0.25)
                 remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(finalRotY), "Y" })
@@ -188,19 +191,19 @@ Tab:CreateButton({
         end
 
         -- Retry Scan
-        Rayfield:Notify({Title = "Retry Scan", Content = "Fixing any missed parts...", Duration = 5})
+        Rayfield:Notify({Title = "Retry Scan", Content = "Fixing skipped parts...", Duration = 5})
         for _, entry in ipairs(processed) do
             local newPart = entry.newPart
             if newPart and newPart.Parent then
                 local sourceSize = entry.sourcePart.Size
                 local sizeDiff = (newPart.Size - sourceSize).Magnitude
                 if sizeDiff > 0.5 then
-                    local targetCFrame = entry.targetCFrame
-                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
+                    local tc = entry.targetCFrame
+                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = tc, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
                     task.wait(0.2)
-                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
+                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = tc, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
                     task.wait(0.2)
-                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
+                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = tc, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
                     task.wait(0.2)
                 end
             end
@@ -210,7 +213,7 @@ Tab:CreateButton({
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created (with retry scan)", Duration = 10})
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 10})
     end,
 })
 
@@ -219,4 +222,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Mixed rotations unchanged | Y flipped | Retry scan", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Mixed = unchanged | Pure Y flipped | Retry scan", Duration = 8})
