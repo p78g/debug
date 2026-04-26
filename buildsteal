@@ -1,4 +1,4 @@
--- Town Build Copier - Direct Resize (X, Y, Z) + Perfect Rotation + Offsets 0,0,0
+-- Town Build Copier - Create at Final Position → Rotate → Resize (Your Requested System)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -55,8 +55,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Direct Resize X Y Z)",
-    Description = "Using your Direct resize remotes",
+    Name = "🔄 Copy Build (Create at Position → Rotate → Resize)",
+    Description = "Create at final spot → Rotate → Resize",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -94,7 +94,7 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Direct resize on X Y Z", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Create at position → Rotate → Resize", Duration = 6})
 
         local createdParts = {}
 
@@ -115,60 +115,13 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
+            -- 1. Create at final position
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- Direct Resize - X axis
-                remote:InvokeServer("SyncResize",
-                    {{ 
-                        Part = newPart, 
-                        CFrame = targetCFrame, 
-                        Size = sourcePart.Size 
-                    }},
-                    { 
-                        "Direct", 
-                        Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), 
-                        "X", 
-                        sourcePart.Size 
-                    }
-                )
-                task.wait(0.4)
-
-                -- Direct Resize - Y axis
-                remote:InvokeServer("SyncResize",
-                    {{ 
-                        Part = newPart, 
-                        CFrame = targetCFrame, 
-                        Size = sourcePart.Size 
-                    }},
-                    { 
-                        "Direct", 
-                        Vector3.new(0, sourcePart.Size.Y - newPart.Size.Y, 0), 
-                        "Y", 
-                        sourcePart.Size 
-                    }
-                )
-                task.wait(0.4)
-
-                -- Direct Resize - Z axis
-                remote:InvokeServer("SyncResize",
-                    {{ 
-                        Part = newPart, 
-                        CFrame = targetCFrame, 
-                        Size = sourcePart.Size 
-                    }},
-                    { 
-                        "Direct", 
-                        Vector3.new(0, 0, sourcePart.Size.Z - newPart.Size.Z), 
-                        "Z", 
-                        sourcePart.Size 
-                    }
-                )
-                task.wait(0.4)
-
-                -- Perfect rotation
+                -- 2. Rotate (your perfect logic)
                 remote:InvokeServer("SyncRotate",
                     {{ Part = newPart, CFrame = targetCFrame }},
                     {
@@ -183,9 +136,14 @@ Tab:CreateButton({
                 )
                 task.wait(0.4)
 
-                -- Move
-                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                -- 3. Resize (your working logic)
+                remote:InvokeServer("SyncResize",
+                    {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
+                    { "ResizeFace", Enum.NormalId.Right, sourcePart.Size.X - newPart.Size.X, Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), "X", Vector3.xAxis, "Normal" }
+                )
                 task.wait(0.4)
+
+                -- No extra Move needed since we created at final position
             end
         end
 
@@ -202,4 +160,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Direct Resize X Y Z + Perfect Rotation", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Create at final position → Rotate → Resize", Duration = 8})
