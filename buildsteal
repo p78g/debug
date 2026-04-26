@@ -1,4 +1,4 @@
--- Town Build Copier - Fixed Negative Rotation + Match Y + Offsets 0,0,0
+-- Town Build Copier - Rotation Retry + Offsets 0,0,0 + Match Y
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -55,8 +55,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Fixed Negative Rotation)",
-    Description = "Offsets 0,0,0 | Match original Y | Fixed negative rotations",
+    Name = "🔄 Copy Build (Rotation Retry)",
+    Description = "Retries rotation if not matching",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -92,18 +92,15 @@ Tab:CreateButton({
         end
         local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
 
-        -- Match original Y level + zero offsets
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Matching Y + fixed negative rotation", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "With rotation retry", Duration = 6})
 
         local createdParts = {}
 
         for _, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
-
-            -- Preserve negative rotations correctly
             local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
 
             local partType = "Normal"
@@ -123,27 +120,44 @@ Tab:CreateButton({
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- Working resize logic from your version
+                -- Resize (your working logic)
                 remote:InvokeServer("SyncResize",
                     {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
                     { "ResizeFace", Enum.NormalId.Right, sourcePart.Size.X - newPart.Size.X, Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), "X", Vector3.xAxis, "Normal" }
                 )
                 task.wait(0.4)
 
-                -- Your perfect rotation with negative sign preserved
-                remote:InvokeServer("SyncRotate",
-                    {{ Part = newPart, CFrame = targetCFrame }},
-                    {
-                        "AroundPivot",
-                        CFrame.new(0, 0, 0, targetCFrame.XVector.X, targetCFrame.XVector.Y, targetCFrame.XVector.Z,
-                                   targetCFrame.YVector.X, targetCFrame.YVector.Y, targetCFrame.YVector.Z,
-                                   targetCFrame.ZVector.X, targetCFrame.ZVector.Y, targetCFrame.ZVector.Z),
-                        "Local",
-                        CFrame.new(targetPos.X, targetPos.Y, targetPos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1),
-                        "Local"
-                    }
-                )
-                task.wait(0.4)
+                -- Rotation with retry
+                local maxRetries = 3
+                for attempt = 1, maxRetries do
+                    remote:InvokeServer("SyncRotate",
+                        {{ Part = newPart, CFrame = targetCFrame }},
+                        {
+                            "AroundPivot",
+                            CFrame.new(0, 0, 0, targetCFrame.XVector.X, targetCFrame.XVector.Y, targetCFrame.XVector.Z,
+                                       targetCFrame.YVector.X, targetCFrame.YVector.Y, targetCFrame.YVector.Z,
+                                       targetCFrame.ZVector.X, targetCFrame.ZVector.Y, targetCFrame.ZVector.Z),
+                            "Local",
+                            CFrame.new(targetPos.X, targetPos.Y, targetPos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                            "Local"
+                        }
+                    )
+                    task.wait(0.3)
+
+                    -- Check if rotation matches
+                    local currentRot = newPart.CFrame.Rotation
+                    local sourceRot = sourcePart.CFrame.Rotation
+
+                    local angleDiff = (currentRot:ToEulerAnglesXYZ() - sourceRot:ToEulerAnglesXYZ()).Magnitude
+
+                    if angleDiff < 0.1 then  -- close enough
+                        break
+                    end
+
+                    if attempt == maxRetries then
+                        warn("Rotation retry failed for part", attempt)
+                    end
+                end
 
                 -- Move
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
@@ -164,4 +178,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Offsets 0,0,0 | Match original Y | Fixed negative rotation", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Offsets 0,0,0 | Match Y | Rotation with retry", Duration = 8})
