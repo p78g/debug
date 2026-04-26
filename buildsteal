@@ -1,9 +1,9 @@
--- Town Build Copier - Exact Data Rotation + Direct Resize/Rotate + Full Debug
+-- Town Build Copier - Fixed Data Rotation Parsing + Debug
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Debug",
+    Name = "Town Plot Copier - Fixed Rotation",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -67,8 +67,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Exact Data + Direct)",
-    Description = "Exact rotation from Data + Direct resize/rotate",
+    Name = "🔄 Copy Build (Fixed Data Parsing)",
+    Description = "Improved Data rotation parsing + Direct methods",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -98,7 +98,7 @@ Tab:CreateButton({
         end
         collect(sourceBuild)
 
-        log("Found " .. #allParts .. " BaseParts to copy")
+        log("Found " .. #allParts .. " BaseParts")
 
         if #allParts == 0 then
             log("ERROR: No parts found")
@@ -123,23 +123,30 @@ Tab:CreateButton({
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
 
-            -- Exact rotation from Data attribute
+            -- Improved Data parsing for rotation
             local rotX, rotY, rotZ = 0, 0, 0
             local data = sourcePart:FindFirstChild("Data")
-            if data and data:IsA("StringValue") then
+            if data and data:IsA("StringValue") and data.Value then
+                log("  Data string: " .. data.Value)
                 local nums = {}
                 for n in data.Value:gmatch("%-?%d+%.?%d*") do
                     table.insert(nums, tonumber(n))
                 end
                 if #nums >= 3 then
-                    rotX = nums[1] or 0
-                    rotY = nums[2] or 0
-                    rotZ = nums[3] or 0
+                    rotX = nums[1]
+                    rotY = nums[2]
+                    rotZ = nums[3]
+                    log(string.format("  Parsed rotation: %.2f, %.2f, %.2f", rotX, rotY, rotZ))
+                else
+                    log("  WARNING: Could not parse 3 numbers from Data")
                 end
+            else
+                log("  No Data attribute or empty")
+                local sx, sy, sz = sourcePart.CFrame:ToEulerAnglesXYZ()
+                rotX = math.deg(sx)
+                rotY = math.deg(sy)
+                rotZ = math.deg(sz)
             end
-
-            log(string.format("Part %d/%d | Source Pos: %s | Data Rotation: %.2f, %.2f, %.2f | Size: %s", 
-                i, #allParts, tostring(sourcePart.Position), rotX, rotY, rotZ, tostring(sourcePart.Size)))
 
             local targetCFrame = CFrame.new(targetPos) * CFrame.fromEulerAnglesXYZ(math.rad(rotX), math.rad(rotY), math.rad(rotZ))
 
@@ -155,17 +162,18 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            log("  Creating as " .. partType .. " at " .. tostring(targetPos))
+            log(string.format("Part %d/%d | Creating as %s at %s | Rotation: %.2f, %.2f, %.2f", 
+                i, #allParts, partType, tostring(targetPos), rotX, rotY, rotZ))
 
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
-                log("  ✓ Created successfully | Initial Size: " .. tostring(newPart.Size))
+                log("  ✓ Created | Initial Size: " .. tostring(newPart.Size))
 
                 local sourceSize = sourcePart.Size
 
-                -- Direct Resize (X, Y, Z)
+                -- Resize (Direct)
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
                 task.wait(0.25)
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
@@ -175,7 +183,7 @@ Tab:CreateButton({
 
                 log("  Resize applied | New Size: " .. tostring(newPart.Size))
 
-                -- Direct Rotation from exact Data values
+                -- Rotation (exact from Data)
                 remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotX), "X" })
                 task.wait(0.25)
                 remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotY), "Y" })
@@ -189,7 +197,7 @@ Tab:CreateButton({
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
                 task.wait(0.3)
 
-                log(string.format("  Final part %d | Size: %s | Rotation: %.2f, %.2f, %.2f", i, tostring(newPart.Size), rotX, rotY, rotZ))
+                log(string.format("  Final part %d complete", i))
             else
                 log("  ✗ Failed to create part " .. i)
             end
@@ -226,4 +234,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Exact Data rotation + Direct methods + Debug", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Fixed Data parsing + full debug", Duration = 8})
