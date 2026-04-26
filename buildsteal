@@ -56,7 +56,7 @@ local Dropdown = Tab:CreateDropdown({
 
 Tab:CreateButton({
     Name = "🔄 Copy Build (Fixed Negative Rotation)",
-    Description = "Offsets 0,0,0 | Match Y | Fixed negative rotations",
+    Description = "Offsets 0,0,0 | Match original Y | Fixed negative rotations",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -95,7 +95,7 @@ Tab:CreateButton({
         -- Match original Y level + zero offsets
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Matching Y level + fixed rotation", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Matching Y + fixed negative rotation", Duration = 6})
 
         local createdParts = {}
 
@@ -164,4 +164,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Offsets 0,0,0 | Match original Y | Perfect rotation", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Offsets 0,0,0 | Match original Y | Fixed negative rotation", Duration = 8})
