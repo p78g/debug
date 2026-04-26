@@ -1,9 +1,9 @@
--- Town Build Copier - Fixed Vector3 Rotation Property
+-- Town Build Copier - Improved Rotation + Resize (Using Source CFrame)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Vector3 Rotation",
+    Name = "Town Plot Copier - Improved",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -27,18 +27,12 @@ end
 local function getRemote()
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local tool = char:WaitForChild("Building Tools", 5)
-    if not tool then 
-        log("ERROR: Building Tools not equipped!")
-        error("Equip Building Tools!") 
-    end
+    if not tool then error("Equip Building Tools!") end
     return tool:WaitForChild("SyncAPI"):WaitForChild("ServerEndpoint")
 end
 
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
 local localBuildFolder = localBuildArea:WaitForChild("Build")
-
-local X_OFFSET = 0
-local Z_OFFSET = 0
 
 local selectedPlayer = nil
 
@@ -66,8 +60,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Vector3 Rotation)",
-    Description = "Handles Rotation as Vector3",
+    Name = "🔄 Copy Build (Improved)",
+    Description = "Better rotation + resize using source CFrame",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -105,7 +99,7 @@ Tab:CreateButton({
         end
         local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
 
-        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
+        local destOrigin = localBuildArea.Position + Vector3.new(0, sourceCenter.Y - localBuildArea.Position.Y, 0)
 
         local createdParts = {}
 
@@ -113,28 +107,9 @@ Tab:CreateButton({
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
 
-            -- Read Rotation as Vector3 (degrees)
-            local rotX, rotY, rotZ = 0, 0, 0
-            local success, err = pcall(function()
-                if sourcePart.Rotation then
-                    local rotVec = sourcePart.Rotation
-                    if typeof(rotVec) == "Vector3" then
-                        rotX = rotVec.X
-                        rotY = rotVec.Y
-                        rotZ = rotVec.Z
-                        log(string.format("Part %d | Rotation Vector3: %.2f, %.2f, %.2f", i, rotX, rotY, rotZ))
-                    else
-                        log("Part " .. i .. " | Rotation is not Vector3")
-                    end
-                else
-                    log("Part " .. i .. " | No Rotation property")
-                end
-            end)
-            if not success then
-                log("Part " .. i .. " | Error reading Rotation: " .. tostring(err))
-            end
-
-            local targetCFrame = CFrame.new(targetPos) * CFrame.fromEulerAnglesXYZ(math.rad(rotX), math.rad(rotY), math.rad(rotZ))
+            -- Get full rotation from source CFrame (most reliable)
+            local sourceRot = sourcePart.CFrame.Rotation
+            local targetCFrame = CFrame.new(targetPos) * sourceRot
 
             local partType = "Normal"
             local class = sourcePart.ClassName
@@ -148,7 +123,7 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            log(string.format("Creating part %d as %s at %s", i, partType, tostring(targetPos)))
+            log(string.format("Part %d | Creating %s at %s", i, partType, tostring(targetPos)))
 
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
@@ -158,35 +133,28 @@ Tab:CreateButton({
 
                 local sourceSize = sourcePart.Size
 
-                -- Aggressive Resize using Direct method
-                for attempt = 1, 3 do
-                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
-                    task.wait(0.2)
-                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
-                    task.wait(0.2)
-                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
-                    task.wait(0.2)
-                end
+                -- Resize - more reliable method
+                task.wait(0.3)
+                remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
+                task.wait(0.2)
+                remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
+                task.wait(0.2)
+                remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
+                task.wait(0.3)
 
                 log("  Resize finished | Final Size: " .. tostring(newPart.Size))
 
-                -- Rotation using Direct
-                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotX), "X" })
-                task.wait(0.25)
-                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotY), "Y" })
-                task.wait(0.25)
-                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotZ), "Z" })
-                task.wait(0.25)
+                -- Rotation using full CFrame (most reliable)
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center" })
+                task.wait(0.4)
 
                 log("  Rotation applied")
 
-                -- Move
+                -- Final move
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
                 task.wait(0.3)
 
                 log("  Part " .. i .. " complete")
-            else
-                log("  ✗ Failed to create part " .. i)
             end
         end
 
@@ -199,17 +167,12 @@ Tab:CreateButton({
     end,
 })
 
--- Debug Button
 Tab:CreateButton({
-    Name = "📋 Copy Full Debug Log",
-    Description = "Copy all debug information",
+    Name = "📋 Copy Debug Log",
     Callback = function()
         local text = table.concat(DebugLog, "\n")
-        if setclipboard then
-            setclipboard(text)
-            Rayfield:Notify({Title = "Copied", Content = "Debug log copied to clipboard", Duration = 5})
-        end
-        print("=== FULL DEBUG LOG ===\n" .. text)
+        if setclipboard then setclipboard(text) end
+        Rayfield:Notify({Title = "Copied", Content = "Debug log copied", Duration = 5})
     end,
 })
 
@@ -218,4 +181,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Vector3 Rotation fixed", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Using full source CFrame for rotation", Duration = 8})
