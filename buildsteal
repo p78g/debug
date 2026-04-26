@@ -1,9 +1,9 @@
--- Town Build Copier - Improved Rotation + Resize (Using Source CFrame)
+-- Town Build Copier - Most Reliable Version (Full CFrame + Strong Rotation)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Improved",
+    Name = "Town Plot Copier - Reliable",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -60,8 +60,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Improved)",
-    Description = "Better rotation + resize using source CFrame",
+    Name = "🔄 Copy Build (Reliable CFrame)",
+    Description = "Uses full source CFrame for rotation",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -107,9 +107,8 @@ Tab:CreateButton({
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
 
-            -- Get full rotation from source CFrame (most reliable)
-            local sourceRot = sourcePart.CFrame.Rotation
-            local targetCFrame = CFrame.new(targetPos) * sourceRot
+            -- Use full source CFrame for perfect rotation + position
+            local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
 
             local partType = "Normal"
             local class = sourcePart.ClassName
@@ -123,7 +122,7 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            log(string.format("Part %d | Creating %s at %s", i, partType, tostring(targetPos)))
+            log(string.format("Part %d | Creating %s | Source Rotation: %s", i, partType, tostring(sourcePart.CFrame.Rotation)))
 
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
@@ -131,22 +130,26 @@ Tab:CreateButton({
                 table.insert(createdParts, newPart)
                 log("  ✓ Created | Initial Size: " .. tostring(newPart.Size))
 
+                task.wait(0.4)
+
                 local sourceSize = sourcePart.Size
 
-                -- Resize - more reliable method
-                task.wait(0.3)
+                -- Better resize
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
-                task.wait(0.2)
+                task.wait(0.25)
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
-                task.wait(0.2)
+                task.wait(0.25)
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
-                task.wait(0.3)
+                task.wait(0.25)
 
                 log("  Resize finished | Final Size: " .. tostring(newPart.Size))
 
-                -- Rotation using full CFrame (most reliable)
-                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "AroundPivot", CFrame.new(), "Center", CFrame.new(), "Center" })
-                task.wait(0.4)
+                -- Strong rotation using AroundPivot with full target CFrame
+                remote:InvokeServer("SyncRotate", 
+                    {{ Part = newPart, CFrame = targetCFrame }},
+                    { "AroundPivot", targetCFrame.Rotation, "Center", CFrame.new(), "Center" }
+                )
+                task.wait(0.5)
 
                 log("  Rotation applied")
 
@@ -155,6 +158,8 @@ Tab:CreateButton({
                 task.wait(0.3)
 
                 log("  Part " .. i .. " complete")
+            else
+                log("  ✗ Failed to create part " .. i)
             end
         end
 
@@ -181,4 +186,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Using full source CFrame for rotation", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Full CFrame rotation + improved resize", Duration = 8})
