@@ -1,9 +1,9 @@
--- Town Build Copier - Axis-Aware Rotation Retry + Match Y + Offsets 0,0,0
+-- Town Build Copier - New System: Create High → Rotate → Move → Resize
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier",
+    Name = "Town Plot Copier - New System",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -55,8 +55,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Axis-Aware Retry)",
-    Description = "Only rotates on the same axis as source",
+    Name = "🔄 Copy Build (Create High → Rotate → Move → Resize)",
+    Description = "New system as requested",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -94,14 +94,17 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Axis-aware rotation retry", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Create high → Rotate → Move → Resize", Duration = 6})
 
         local createdParts = {}
 
+        -- Safe creation point 20 studs up in center
+        local safeCreatePos = localBuildArea.Position + Vector3.new(0, 20, 0)
+
         for _, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
-            local targetPos = destOrigin + offset
-            local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
+            local finalTargetPos = destOrigin + offset
+            local targetCFrame = CFrame.new(finalTargetPos) * sourcePart.CFrame.Rotation
 
             local partType = "Normal"
             local class = sourcePart.ClassName
@@ -115,72 +118,36 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
+            -- 1. Create high up in center
+            local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(safeCreatePos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- Resize (your working logic)
+                -- 2. Rotate (your perfect logic)
+                remote:InvokeServer("SyncRotate",
+                    {{ Part = newPart, CFrame = targetCFrame }},
+                    {
+                        "AroundPivot",
+                        CFrame.new(0, 0, 0, targetCFrame.XVector.X, targetCFrame.XVector.Y, targetCFrame.XVector.Z,
+                                   targetCFrame.YVector.X, targetCFrame.YVector.Y, targetCFrame.YVector.Z,
+                                   targetCFrame.ZVector.X, targetCFrame.ZVector.Y, targetCFrame.ZVector.Z),
+                        "Local",
+                        CFrame.new(safeCreatePos.X, safeCreatePos.Y, safeCreatePos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                        "Local"
+                    }
+                )
+                task.wait(0.4)
+
+                -- 3. Move to final position
+                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                task.wait(0.4)
+
+                -- 4. Resize
                 remote:InvokeServer("SyncResize",
                     {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
                     { "ResizeFace", Enum.NormalId.Right, sourcePart.Size.X - newPart.Size.X, Vector3.new(sourcePart.Size.X - newPart.Size.X, 0, 0), "X", Vector3.xAxis, "Normal" }
                 )
-                task.wait(0.4)
-
-                -- Axis-aware rotation retry
-                local maxRetries = 30  -- reasonable limit
-                local sx, sy, sz = sourcePart.CFrame:ToEulerAnglesXYZ()
-
-                for attempt = 1, maxRetries do
-                    remote:InvokeServer("SyncRotate",
-                        {{ Part = newPart, CFrame = targetCFrame }},
-                        {
-                            "AroundPivot",
-                            CFrame.new(0, 0, 0, targetCFrame.XVector.X, targetCFrame.XVector.Y, targetCFrame.XVector.Z,
-                                       targetCFrame.YVector.X, targetCFrame.YVector.Y, targetCFrame.YVector.Z,
-                                       targetCFrame.ZVector.X, targetCFrame.ZVector.Y, targetCFrame.ZVector.Z),
-                            "Local",
-                            CFrame.new(targetPos.X, targetPos.Y, targetPos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1),
-                            "Local"
-                        }
-                    )
-                    task.wait(0.25)
-
-                    local nx, ny, nz = newPart.CFrame:ToEulerAnglesXYZ()
-
-                    local diffX = math.abs(sx - nx)
-                    local diffY = math.abs(sy - ny)
-                    local diffZ = math.abs(sz - nz)
-
-                    if diffX < 0.1 and diffY < 0.1 and diffZ < 0.1 then
-                        break
-                    end
-
-                    -- Only rotate on the same axis as source (your request)
-                    local correction = 0
-                    if math.abs(sx) > 0.05 then correction = sx * -2 end  -- double opposite on X
-                    if math.abs(sy) > 0.05 then correction = sy * -2 end  -- double opposite on Y
-                    if math.abs(sz) > 0.05 then correction = sz * -2 end  -- double opposite on Z
-
-                    local flipCFrame = targetCFrame * CFrame.Angles(correction, 0, 0)  -- only on detected axis
-
-                    remote:InvokeServer("SyncRotate",
-                        {{ Part = newPart, CFrame = flipCFrame }},
-                        {
-                            "AroundPivot",
-                            CFrame.new(0, 0, 0, flipCFrame.XVector.X, flipCFrame.XVector.Y, flipCFrame.XVector.Z,
-                                       flipCFrame.YVector.X, flipCFrame.YVector.Y, flipCFrame.YVector.Z,
-                                       flipCFrame.ZVector.X, flipCFrame.ZVector.Y, flipCFrame.ZVector.Z),
-                            "Local",
-                            CFrame.new(targetPos.X, targetPos.Y, targetPos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1),
-                            "Local"
-                        }
-                    )
-                    task.wait(0.25)
-                end
-
-                -- Move
-                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
                 task.wait(0.4)
             end
         end
@@ -198,4 +165,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Axis-aware retry | Only rotate on same axis as source", Duration = 8})
+Rayfield:Notify({Title = "New System Loaded", Content = "Create high → Rotate → Move → Resize", Duration = 8})
