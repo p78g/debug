@@ -1,9 +1,9 @@
--- Town Build Copier - Exact Rotation from Data (180° preserved) + Debug
+-- Town Build Copier - Stable: Create at Position → Rotate → Sequential Direct Move (0.3s) → Resize
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Debug",
+    Name = "Town Plot Copier",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -16,21 +16,10 @@ local LocalPlayer = Players.LocalPlayer
 
 local BUILDING_AREAS = Workspace:WaitForChild("Private Building Areas")
 
-local DebugLog = {}
-
-local function log(msg)
-    local line = os.date("%X") .. " | " .. msg
-    table.insert(DebugLog, line)
-    print("[Copier] " .. msg)
-end
-
 local function getRemote()
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local tool = char:WaitForChild("Building Tools", 5)
-    if not tool then 
-        log("ERROR: Building Tools not equipped!")
-        error("Equip Building Tools!") 
-    end
+    if not tool then error("Equip Building Tools!") end
     return tool:WaitForChild("SyncAPI"):WaitForChild("ServerEndpoint")
 end
 
@@ -62,33 +51,26 @@ local Dropdown = Tab:CreateDropdown({
     MultipleOptions = false,
     Callback = function(Option)
         selectedPlayer = (typeof(Option) == "table" and #Option > 0) and Players:FindFirstChild(Option[1]) or nil
-        log("Selected player: " .. (selectedPlayer and selectedPlayer.Name or "None"))
     end,
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Exact 180° Rotation)",
-    Description = "Preserves 180° | Exact from Data",
+    Name = "🔄 Copy Build (Stable + Sequential Move)",
+    Description = "Create at position → Rotate → Move one by one (0.3s) → Resize",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
             return
         end
 
-        DebugLog = {}  -- Clear old log
-        log("=== COPY STARTED ===")
-        log("Selected player: " .. selectedPlayer.Name)
-
         local remote = getRemote()
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
-        if not sourceArea then
-            log("ERROR: Source build area not found")
-            Rayfield:Notify({Title = "Error", Content = "Source not found"})
-            return
+        if not sourceArea then 
+            Rayfield:Notify({Title = "Error", Content = "Source not found"}) 
+            return 
         end
 
         local sourceBuild = sourceArea:WaitForChild("Build")
-        log("Source build folder found")
 
         local allParts = {}
         local function collect(obj)
@@ -98,12 +80,9 @@ Tab:CreateButton({
         end
         collect(sourceBuild)
 
-        log("Found " .. #allParts .. " BaseParts")
-
         if #allParts == 0 then
-            log("ERROR: No parts found")
-            Rayfield:Notify({Title = "Error", Content = "No parts found"})
-            return
+            Rayfield:Notify({Title = "Error", Content = "No parts found"}) 
+            return 
         end
 
         local sumX, sumY, sumZ = 0, 0, 0
@@ -112,18 +91,18 @@ Tab:CreateButton({
             sumX += pos.X; sumY += pos.Y; sumZ += pos.Z
         end
         local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
-        log("Source center: " .. tostring(sourceCenter))
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
-        log("Destination origin: " .. tostring(destOrigin))
+
+        Rayfield:Notify({Title = "Copying...", Content = "Stable system with sequential move", Duration = 6})
 
         local createdParts = {}
 
-        for i, sourcePart in ipairs(allParts) do
+        for _, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
 
-            -- Exact rotation from Data (preserve 180° etc.)
+            -- Exact rotation from Data
             local rotX, rotY, rotZ = 0, 0, 0
             local data = sourcePart:FindFirstChild("Data")
             if data and data:IsA("StringValue") then
@@ -137,8 +116,6 @@ Tab:CreateButton({
                     rotZ = nums[3] or 0
                 end
             end
-
-            log(string.format("Part %d/%d | Rotation: %.2f, %.2f, %.2f", i, #allParts, rotX, rotY, rotZ))
 
             local targetCFrame = CFrame.new(targetPos) * CFrame.fromEulerAnglesXYZ(math.rad(rotX), math.rad(rotY), math.rad(rotZ))
 
@@ -154,13 +131,11 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
-            log("  Creating part as " .. partType)
-
+            -- Create at final position
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
-                log("  ✓ Created part successfully | Current Size: " .. tostring(newPart.Size))
 
                 local sourceSize = sourcePart.Size
 
@@ -172,7 +147,7 @@ Tab:CreateButton({
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
                 task.wait(0.25)
 
-                -- Rotation
+                -- Rotate
                 remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotX), "X" })
                 task.wait(0.25)
                 remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotY), "Y" })
@@ -180,39 +155,21 @@ Tab:CreateButton({
                 remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotZ), "Z" })
                 task.wait(0.25)
 
-                -- Move
-                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                -- Sequential Move with 0.3s delay using your Direct move remote
+                local moveOffset = finalTargetPos - newPart.Position   -- correct mirror distance
+                remote:InvokeServer("SyncMove", 
+                    {{ Part = newPart, CFrame = targetCFrame }},
+                    { "Direct", moveOffset, "X", targetCFrame }
+                )
                 task.wait(0.3)
-
-                log("  Finished part " .. i)
-            else
-                log("  ✗ Failed to create part " .. i)
             end
         end
 
         if #createdParts > 0 then
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
-            log("Created group with " .. #createdParts .. " parts")
         end
 
-        log("=== COPY FINISHED ===")
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 8})
-    end,
-})
-
--- ================== DEBUG BUTTON ==================
-Tab:CreateButton({
-    Name = "📋 Copy Debug Log",
-    Description = "Copy all debug information to clipboard",
-    Callback = function()
-        local text = table.concat(DebugLog, "\n")
-        if setclipboard then
-            setclipboard(text)
-            Rayfield:Notify({Title = "Success", Content = "Debug log copied to clipboard!", Duration = 5})
-        else
-            Rayfield:Notify({Title = "Warning", Content = "setclipboard not supported in this executor", Duration = 5})
-        end
-        print("=== FULL DEBUG LOG ===\n" .. text)
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 10})
     end,
 })
 
@@ -221,4 +178,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Exact Data rotation (180° preserved) + Debug", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Stable system with sequential Direct move", Duration = 8})
