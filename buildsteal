@@ -1,9 +1,9 @@
--- Town Build Copier - Match Original Y Level + Perfect Rotation
+-- Town Build Copier - Resize Working + Rotation Fix Attempt 2
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier",
+    Name = "Town Copier - Rotation Fix",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -26,8 +26,10 @@ end
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
 local localBuildFolder = localBuildArea:WaitForChild("Build")
 
+local BASE_Y = 5
 local X_OFFSET = -28.637
 local Z_OFFSET = -17.512
+local EXTRA_Y = 0
 
 local selectedPlayer = nil
 
@@ -56,23 +58,21 @@ local Dropdown = Tab:CreateDropdown({
 
 Tab:CreateSection("Offsets")
 Tab:CreateSlider({ Name = "X Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = X_OFFSET, Callback = function(v) X_OFFSET = v end })
+Tab:CreateSlider({ Name = "Extra Y", Range = {-20, 50}, Increment = 0.1, CurrentValue = EXTRA_Y, Callback = function(v) EXTRA_Y = v end })
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Match Original Y Level)",
-    Description = "Copies exact relative Y height from source build",
+    Name = "🔄 Copy Build - Rotation Fix",
+    Description = "Resize working | Trying better rotation",
     Callback = function()
         if not selectedPlayer then
-            Rayfield:Notify({Title = "Error", Content = "Select player first!"})
-            return
+            Rayfield:Notify({Title = "Error", Content = "Select player!"}) 
+            return 
         end
 
         local remote = getRemote()
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
-        if not sourceArea then 
-            Rayfield:Notify({Title = "Error", Content = "Source not found"}) 
-            return 
-        end
+        if not sourceArea then return Rayfield:Notify({Title = "Error", Content = "Source not found"}) end
 
         local sourceBuild = sourceArea:WaitForChild("Build")
 
@@ -89,7 +89,6 @@ Tab:CreateButton({
             return 
         end
 
-        -- Calculate source center (including Y)
         local sumX, sumY, sumZ = 0, 0, 0
         for _, p in ipairs(allParts) do
             local pos = p.Position
@@ -97,16 +96,16 @@ Tab:CreateButton({
         end
         local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
 
-        -- Match original Y level + your X/Z offsets
-        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
+        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y + EXTRA_Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Matching original Y height...", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Applying improved rotation...", Duration = 6})
 
         local createdParts = {}
 
         for _, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
+
             local targetCFrame = CFrame.new(targetPos) * sourcePart.CFrame.Rotation
 
             local partType = "Normal"
@@ -126,43 +125,26 @@ Tab:CreateButton({
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- Your exact resize
-                remote:InvokeServer("SyncResize",
-                    {{ 
-                        Part = newPart, 
-                        CFrame = targetCFrame, 
-                        Size = sourcePart.Size 
-                    }},
-                    { 
-                        "ResizeFace", 
-                        Enum.NormalId.Right, 
-                        0, 
-                        Vector3.new(0, 0, 0), 
-                        "X", 
-                        Vector3.xAxis, 
-                        "Normal" 
-                    }
-                )
-                task.wait(0.4)
-
-                -- Your perfect rotation (keep this exactly)
-                remote:InvokeServer("SyncRotate",
+                -- Improved Rotation Call
+                remote:InvokeServer("SyncRotate", 
                     {{ Part = newPart, CFrame = targetCFrame }},
-                    {
-                        "AroundPivot",
-                        CFrame.new(0, 0, 0, targetCFrame.XVector.X, targetCFrame.XVector.Y, targetCFrame.XVector.Z,
-                                   targetCFrame.YVector.X, targetCFrame.YVector.Y, targetCFrame.YVector.Z,
-                                   targetCFrame.ZVector.X, targetCFrame.ZVector.Y, targetCFrame.ZVector.Z),
-                        "Local",
-                        CFrame.new(targetPos.X, targetPos.Y, targetPos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1),
-                        "Local"
-                    }
+                    { "World", CFrame.new(), "Center", CFrame.new(), "Center" }
                 )
-                task.wait(0.4)
+                task.wait(0.5)
 
                 -- Move
-                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
-                task.wait(0.4)
+                remote:InvokeServer("SyncMove", 
+                    {{ Part = newPart, CFrame = targetCFrame }},
+                    { "AlongFace", Vector3.new(), "Global", CFrame.new() }
+                )
+                task.wait(0.5)
+
+                -- Resize (keep what worked)
+                remote:InvokeServer("SyncResize", 
+                    {{ Part = newPart, CFrame = targetCFrame, Size = sourcePart.Size }},
+                    { "ResizeFace", Enum.NormalId.Right, 0, Vector3.new(), "X", Vector3.xAxis, "Normal" }
+                )
+                task.wait(0.6)
             end
         end
 
@@ -170,13 +152,13 @@ Tab:CreateButton({
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
 
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 8})
+        Rayfield:Notify({Title = "Done", Content = #createdParts .. " parts created", Duration = 8})
     end,
 })
 
-Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
+Tab:CreateButton({ Name = "Refresh List", Callback = function()
     refreshPlayers()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Y Level Matched", Content = "Copied build will have same Y height as original", Duration = 8})
+Rayfield:Notify({Title = "Rotation Fix Loaded", Content = "Changed SyncRotate mode to 'World'", Duration = 8})
