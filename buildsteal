@@ -1,4 +1,4 @@
--- Town Build Copier - New Double Opposite Rotation Retry
+-- Town Build Copier - New Rotation Fix Logic (Double + 180 - angle)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -55,8 +55,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Double Opposite Retry)",
-    Description = "If -16 → +32, if +16 → -32 for sideways",
+    Name = "🔄 Copy Build (New Rotation Fix)",
+    Description = "Double angle + 180 - angle retry",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -94,7 +94,7 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Double opposite retry for sideways", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "New rotation fix logic", Duration = 6})
 
         local createdParts = {}
 
@@ -127,7 +127,7 @@ Tab:CreateButton({
                 )
                 task.wait(0.4)
 
-                -- New retry logic for sideways rotations
+                -- New rotation fix logic
                 local maxRetries = 3
                 for attempt = 1, maxRetries do
                     remote:InvokeServer("SyncRotate",
@@ -144,22 +144,21 @@ Tab:CreateButton({
                     )
                     task.wait(0.3)
 
-                    -- Check if rotation sign is wrong (simple check on X and Z components for sideways)
+                    -- Check if rotation is wrong (simple sign or angle mismatch)
                     local sx, sy, sz = sourcePart.CFrame:ToEulerAnglesXYZ()
                     local nx, ny, nz = newPart.CFrame:ToEulerAnglesXYZ()
 
-                    local signWrong = false
-                    if (sx > 0 and nx < 0) or (sx < 0 and nx > 0) then signWrong = true end
-                    if (sz > 0 and nz < 0) or (sz < 0 and nz > 0) then signWrong = true end
+                    local angleDiff = math.abs(sx - nx) + math.abs(sy - ny) + math.abs(sz - nz)
 
-                    if not signWrong then
+                    if angleDiff < 0.2 then
                         break
                     end
 
-                    -- Flip by double the angle in opposite direction (your new logic)
+                    -- New fix: double the angle and subtract from 180, then apply in opposite direction
                     if attempt < maxRetries then
-                        local flipAngle = -2 * sx   -- double and opposite
-                        local flipCFrame = targetCFrame * CFrame.Angles(0, flipAngle, 0)
+                        local correction = 180 - math.abs(sx) * 2   -- your new logic
+                        if sx < 0 then correction = -correction end
+                        local flipCFrame = targetCFrame * CFrame.Angles(0, math.rad(correction), 0)
                         remote:InvokeServer("SyncRotate",
                             {{ Part = newPart, CFrame = flipCFrame }},
                             {
@@ -195,4 +194,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "New double opposite retry for sideways", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "New rotation fix: 180 - (angle * 2)", Duration = 8})
