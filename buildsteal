@@ -1,4 +1,4 @@
--- Town Build Copier - Rotation from Data (Radians Fixed) + Exact Size
+-- Town Build Copier - Proper Negative Rotation Fix (Only X Flipped)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -55,8 +55,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Radians Fixed + X Flip)",
-    Description = "Rotation from Data (radians) + only X flipped",
+    Name = "🔄 Copy Build (Proper Rotation Fix)",
+    Description = "Only X flipped | Negative angles preserved | Exact size",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -94,7 +94,7 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Radians fixed + X flip", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Proper negative rotation fix", Duration = 6})
 
         local createdParts = {}
 
@@ -102,7 +102,7 @@ Tab:CreateButton({
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
 
-            -- Get rotation from Data attribute (degrees)
+            -- Get rotation from Data (degrees)
             local rotX, rotY, rotZ = 0, 0, 0
             local data = sourcePart:FindFirstChild("Data")
             if data and data:IsA("StringValue") then
@@ -116,19 +116,19 @@ Tab:CreateButton({
                     rotZ = nums[3] or 0
                 end
             else
-                -- Fallback to CFrame
+                -- Fallback
                 local sx, sy, sz = sourcePart.CFrame:ToEulerAnglesXYZ()
                 rotX = math.deg(sx)
                 rotY = math.deg(sy)
                 rotZ = math.deg(sz)
             end
 
-            -- Flip only X (sideways)
+            -- Flip ONLY X (sideways)
             if math.abs(rotX) > 0.1 then
                 rotX = -rotX
             end
 
-            -- Convert to radians for Direct rotation
+            -- Convert to radians
             local radX = math.rad(rotX)
             local radY = math.rad(rotY)
             local radZ = math.rad(rotZ)
@@ -155,7 +155,7 @@ Tab:CreateButton({
 
                 local sourceSize = sourcePart.Size
 
-                -- 2. Resize Exact Direct
+                -- 2. Resize Exact
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
                 task.wait(0.25)
 
@@ -165,16 +165,13 @@ Tab:CreateButton({
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
                 task.wait(0.25)
 
-                -- 3. Direct Rotation (radians)
-                -- X rotation
+                -- 3. Direct Rotation (radians, X flipped)
                 remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", radX, "X" })
                 task.wait(0.25)
 
-                -- Y rotation
                 remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", radY, "Y" })
                 task.wait(0.25)
 
-                -- Z rotation
                 remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", radZ, "Z" })
                 task.wait(0.25)
 
@@ -197,4 +194,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Rotation from Data (radians) + only X flipped", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Proper radians + only X flipped", Duration = 8})
