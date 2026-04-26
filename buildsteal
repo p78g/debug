@@ -1,4 +1,4 @@
--- Town Build Copier - Only X (Sideways) Rotation Flipped + Exact Size
+-- Town Build Copier - Rotation from Data Attribute + Exact Size + Direct Resize
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -55,8 +55,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Only X Sideways Flipped)",
-    Description = "X rotation flipped | Exact size | Fixed error",
+    Name = "🔄 Copy Build (Rotation from Data)",
+    Description = "Rotation from Data attribute + exact size",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -94,15 +94,35 @@ Tab:CreateButton({
 
         local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Only X sideways flipped", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Rotation from Data + exact size", Duration = 6})
 
         local createdParts = {}
 
         for _, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
             local targetPos = destOrigin + offset
-            local sourceCFrame = sourcePart.CFrame
-            local targetCFrame = CFrame.new(targetPos) * sourceCFrame.Rotation
+
+            -- Get rotation from Data attribute (X, Y, Z in degrees)
+            local rotX, rotY, rotZ = 0, 0, 0
+            local data = sourcePart:FindFirstChild("Data")
+            if data and data:IsA("StringValue") then
+                local values = {}
+                for num in data.Value:gmatch("%-?%d+%.?%d*") do
+                    table.insert(values, tonumber(num))
+                end
+                if #values >= 3 then
+                    rotX = values[1] or 0
+                    rotY = values[2] or 0
+                    rotZ = values[3] or 0
+                end
+            end
+
+            -- Flip only X (sideways) if needed
+            if math.abs(rotX) > 0.05 then
+                rotX = -rotX
+            end
+
+            local targetCFrame = CFrame.new(targetPos) * CFrame.fromEulerAnglesXYZ(math.rad(rotX), math.rad(rotY), math.rad(rotZ))
 
             local partType = "Normal"
             local class = sourcePart.ClassName
@@ -116,6 +136,7 @@ Tab:CreateButton({
             elseif class == "SpawnLocation" then partType = "Spawn"
             end
 
+            -- 1. Create at final position
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
@@ -123,7 +144,7 @@ Tab:CreateButton({
 
                 local sourceSize = sourcePart.Size
 
-                -- Exact Direct Resize X, Y, Z
+                -- 2. Resize Exact Direct X Y Z
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
                 task.wait(0.25)
 
@@ -133,21 +154,14 @@ Tab:CreateButton({
                 remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
                 task.wait(0.25)
 
-                -- Rotation: Only flip X (sideways) axis
-                local sx, sy, sz = sourceCFrame:ToEulerAnglesXYZ()
-                local finalCFrame = targetCFrame
-                if math.abs(sx) > 0.05 then
-                    -- Flip only the X rotation
-                    finalCFrame = CFrame.new(targetPos) * CFrame.fromEulerAnglesXYZ(-sx, sy, sz)
-                end
-
+                -- 3. Rotate using Data values (with X flip)
                 remote:InvokeServer("SyncRotate",
-                    {{ Part = newPart, CFrame = finalCFrame }},
+                    {{ Part = newPart, CFrame = targetCFrame }},
                     {
                         "AroundPivot",
-                        CFrame.new(0, 0, 0, finalCFrame.XVector.X, finalCFrame.XVector.Y, finalCFrame.XVector.Z,
-                                   finalCFrame.YVector.X, finalCFrame.YVector.Y, finalCFrame.YVector.Z,
-                                   finalCFrame.ZVector.X, finalCFrame.ZVector.Y, finalCFrame.ZVector.Z),
+                        CFrame.new(0, 0, 0, targetCFrame.XVector.X, targetCFrame.XVector.Y, targetCFrame.XVector.Z,
+                                   targetCFrame.YVector.X, targetCFrame.YVector.Y, targetCFrame.YVector.Z,
+                                   targetCFrame.ZVector.X, targetCFrame.ZVector.Y, targetCFrame.ZVector.Z),
                         "Local",
                         CFrame.new(targetPos.X, targetPos.Y, targetPos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1),
                         "Local"
@@ -155,8 +169,8 @@ Tab:CreateButton({
                 )
                 task.wait(0.4)
 
-                -- Move
-                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = finalCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                -- 4. Move
+                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
                 task.wait(0.4)
             end
         end
@@ -174,4 +188,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Only X sideways flipped | Exact size", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Rotation from Data attribute (X flipped) + exact size", Duration = 8})
