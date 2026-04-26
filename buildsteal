@@ -1,9 +1,9 @@
--- Town Build Copier - Most Aggressive Final Attempt
+-- Town Build Copier - Final Reliable Version (Single-axis Direct + Mixed AroundPivot)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Aggressive Final",
+    Name = "Town Plot Copier - Final",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -60,8 +60,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Aggressive Final)",
-    Description = "Maximum force on rotation and resize",
+    Name = "🔄 Copy Build",
+    Description = "Single-axis Direct | Mixed AroundPivot + Aggressive Resize",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -74,13 +74,9 @@ Tab:CreateButton({
 
         local remote = getRemote()
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
-        if not sourceArea then
-            log("ERROR: Source area not found")
-            return
-        end
+        if not sourceArea then return end
 
         local sourceBuild = sourceArea:WaitForChild("Build")
-        log("Source build folder located")
 
         local allParts = {}
         local function collect(obj)
@@ -102,7 +98,6 @@ Tab:CreateButton({
         local destOrigin = localBuildArea.Position + Vector3.new(0, sourceCenter.Y - localBuildArea.Position.Y, 0)
 
         local createdParts = {}
-        local processed = {}
 
         for i, sourcePart in ipairs(allParts) do
             local offset = sourcePart.Position - sourceCenter
@@ -113,7 +108,6 @@ Tab:CreateButton({
                 rotX = sourcePart.Rotation.X
                 rotY = sourcePart.Rotation.Y
                 rotZ = sourcePart.Rotation.Z
-                log(string.format("Part %d | Rotation: %.2f, %.2f, %.2f", i, rotX, rotY, rotZ))
             end
 
             local targetCFrame = CFrame.new(targetPos) * CFrame.fromEulerAnglesXYZ(math.rad(rotX), math.rad(rotY), math.rad(rotZ))
@@ -134,27 +128,27 @@ Tab:CreateButton({
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
-                table.insert(processed, {newPart = newPart, sourcePart = sourcePart, targetCFrame = targetCFrame})
 
                 local sourceSize = sourcePart.Size
 
-                -- Extremely aggressive resize
-                task.wait(0.5)
+                -- Aggressive resize
+                task.wait(0.4)
                 for _ = 1, 5 do
                     remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
-                    task.wait(0.2)
+                    task.wait(0.15)
                     remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
-                    task.wait(0.2)
+                    task.wait(0.15)
                     remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
-                    task.wait(0.2)
+                    task.wait(0.15)
                 end
 
-                log("  Resize finished | Final Size: " .. tostring(newPart.Size))
+                -- Smart Rotation
+                local nonZeroAxes = 0
+                if math.abs(rotX) > 2 then nonZeroAxes += 1 end
+                if math.abs(rotY) > 2 then nonZeroAxes += 1 end
+                if math.abs(rotZ) > 2 then nonZeroAxes += 1 end
 
-                -- Strong rotation attempt
-                local nonZero = (math.abs(rotX) > 1) + (math.abs(rotY) > 1) + (math.abs(rotZ) > 1)
-                if nonZero <= 1 then
-                    log("  Single-axis - Direct")
+                if nonZeroAxes <= 1 then
                     remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotX), "X" })
                     task.wait(0.3)
                     remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotY), "Y" })
@@ -162,7 +156,6 @@ Tab:CreateButton({
                     remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotZ), "Z" })
                     task.wait(0.3)
                 else
-                    log("  Mixed - AroundPivot full")
                     remote:InvokeServer("SyncRotate", 
                         {{ Part = newPart, CFrame = targetCFrame }},
                         { "AroundPivot", targetCFrame.Rotation, "Center", CFrame.new(), "Center" }
@@ -170,11 +163,8 @@ Tab:CreateButton({
                     task.wait(0.6)
                 end
 
-                -- Final move
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
-                task.wait(0.4)
-
-                log("  Part " .. i .. " complete")
+                task.wait(0.3)
             end
         end
 
@@ -183,22 +173,19 @@ Tab:CreateButton({
         end
 
         log("=== COPY FINISHED ===")
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 10})
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 8})
     end,
 })
+
+Tab:CreateButton({ Name = "Refresh Player List", Callback = refreshPlayers })
 
 Tab:CreateButton({
     Name = "📋 Copy Debug Log",
     Callback = function()
         local text = table.concat(DebugLog, "\n")
         if setclipboard then setclipboard(text) end
-        Rayfield:Notify({Title = "Copied", Content = "Debug log copied", Duration = 5})
+        Rayfield:Notify({Title = "Copied", Content = "Log copied", Duration = 5})
     end,
 })
 
-Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
-    refreshPlayers()
-    Dropdown:Refresh(playerOptions)
-end })
-
-Rayfield:Notify({Title = "Loaded", Content = "Aggressive resize + smart rotation", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Smart single vs mixed rotation", Duration = 8})
