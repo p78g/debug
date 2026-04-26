@@ -1,9 +1,9 @@
--- Town Build Copier - Safe Debug Version (Find Rotation Property)
+-- Town Build Copier - Safe Version (Fixed Rotation Property)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Safe Debug",
+    Name = "Town Plot Copier",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
@@ -21,7 +21,7 @@ local DebugLog = {}
 local function log(msg)
     local line = os.date("%X") .. " | " .. msg
     table.insert(DebugLog, line)
-    print("[DEBUG] " .. msg)
+    print("[Copier] " .. msg)
 end
 
 local function getRemote()
@@ -66,8 +66,8 @@ local Dropdown = Tab:CreateDropdown({
 })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Safe Debug)",
-    Description = "Safe version with full property logging",
+    Name = "🔄 Copy Build (Safe Rotation)",
+    Description = "Reads Rotation property safely",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -82,6 +82,7 @@ Tab:CreateButton({
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
         if not sourceArea then
             log("ERROR: Source area not found")
+            Rayfield:Notify({Title = "Error", Content = "Source not found"})
             return
         end
 
@@ -98,6 +99,12 @@ Tab:CreateButton({
 
         log("Found " .. #allParts .. " BaseParts")
 
+        if #allParts == 0 then
+            log("ERROR: No parts found")
+            Rayfield:Notify({Title = "Error", Content = "No parts found"})
+            return
+        end
+
         local sumX, sumY, sumZ = 0, 0, 0
         for _, p in ipairs(allParts) do
             local pos = p.Position
@@ -110,51 +117,83 @@ Tab:CreateButton({
         local createdParts = {}
 
         for i, sourcePart in ipairs(allParts) do
-            log("--- Part " .. i .. " ---")
-            log("Class: " .. sourcePart.ClassName)
-            log("Position: " .. tostring(sourcePart.Position))
-            log("Size: " .. tostring(sourcePart.Size))
+            local offset = sourcePart.Position - sourceCenter
+            local targetPos = destOrigin + offset
 
-            -- List all properties to find Rotation
-            log("Properties on part:")
-            for _, prop in pairs(getprops(sourcePart)) do
-                log("  " .. prop)
-            end
-
-            -- Try to read Rotation property
+            -- Safe read of Rotation property
             local rotX, rotY, rotZ = 0, 0, 0
             local success, err = pcall(function()
                 if sourcePart.Rotation then
-                    local c = sourcePart.Rotation
-                    local rx, ry, rz = c:ToEulerAnglesXYZ()
+                    local cframe = sourcePart.Rotation
+                    local rx, ry, rz = cframe:ToEulerAnglesXYZ()
                     rotX = math.deg(rx)
                     rotY = math.deg(ry)
                     rotZ = math.deg(rz)
-                    log("Found Rotation property (CFrame): " .. rotX .. ", " .. rotY .. ", " .. rotZ)
+                    log(string.format("Part %d | Rotation: %.2f, %.2f, %.2f", i, rotX, rotY, rotZ))
+                else
+                    log("Part " .. i .. " | No Rotation property")
                 end
             end)
             if not success then
-                log("Error reading Rotation property: " .. tostring(err))
+                log("Part " .. i .. " | Error reading Rotation: " .. tostring(err))
             end
 
-            local targetPos = destOrigin + (sourcePart.Position - sourceCenter)
             local targetCFrame = CFrame.new(targetPos) * CFrame.fromEulerAnglesXYZ(math.rad(rotX), math.rad(rotY), math.rad(rotZ))
 
             local partType = "Normal"
-            -- ... (partType detection same as before)
+            local class = sourcePart.ClassName
+            if class == "TrussPart" then partType = "Truss"
+            elseif class == "WedgePart" then partType = "Wedge"
+            elseif class == "CornerWedgePart" then partType = "Corner"
+            elseif class == "Cylinder" or sourcePart.Shape == Enum.PartType.Cylinder then partType = "Cylinder"
+            elseif sourcePart.Shape == Enum.PartType.Ball then partType = "Ball"
+            elseif class == "Seat" then partType = "Seat"
+            elseif class == "VehicleSeat" then partType = "Vehicle Seat"
+            elseif class == "SpawnLocation" then partType = "Spawn"
+            end
+
+            log("Creating part " .. i .. " as " .. partType)
 
             local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
-                log("Created part successfully")
+                log("  ✓ Created | Initial Size: " .. tostring(newPart.Size))
+
+                local sourceSize = sourcePart.Size
+
+                -- Resize (aggressive)
+                for _ = 1, 3 do
+                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
+                    task.wait(0.2)
+                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
+                    task.wait(0.2)
+                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
+                    task.wait(0.2)
+                end
+
+                -- Rotation
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotX), "X" })
+                task.wait(0.25)
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotY), "Y" })
+                task.wait(0.25)
+                remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotZ), "Z" })
+                task.wait(0.25)
+
+                -- Move
+                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                task.wait(0.3)
             else
-                log("Failed to create part")
+                log("  ✗ Failed to create part " .. i)
             end
         end
 
+        if #createdParts > 0 then
+            remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
+        end
+
         log("=== COPY FINISHED ===")
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts attempted", Duration = 10})
+        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 10})
     end,
 })
 
@@ -177,4 +216,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Loaded", Content = "Safe debug version - lists all properties", Duration = 8})
+Rayfield:Notify({Title = "Loaded", Content = "Safe version with Rotation property", Duration = 8})
