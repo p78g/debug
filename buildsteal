@@ -1,4 +1,4 @@
--- Town Build Copier - Simple Exact Resize Test
+-- Town Build Copier - Match Original Y Level + Perfect Rotation
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -26,7 +26,6 @@ end
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
 local localBuildFolder = localBuildArea:WaitForChild("Build")
 
-local BASE_Y = 4
 local X_OFFSET = -28.637
 local Z_OFFSET = -17.512
 
@@ -60,8 +59,8 @@ Tab:CreateSlider({ Name = "X Offset", Range = {-100, 100}, Increment = 0.01, Cur
 Tab:CreateSlider({ Name = "Z Offset", Range = {-100, 100}, Increment = 0.01, CurrentValue = Z_OFFSET, Callback = function(v) Z_OFFSET = v end })
 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Exact Resize Test)",
-    Description = "Minimal with your exact resize remote",
+    Name = "🔄 Copy Build (Match Original Y Level)",
+    Description = "Copies exact relative Y height from source build",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
@@ -90,6 +89,7 @@ Tab:CreateButton({
             return 
         end
 
+        -- Calculate source center (including Y)
         local sumX, sumY, sumZ = 0, 0, 0
         for _, p in ipairs(allParts) do
             local pos = p.Position
@@ -97,9 +97,10 @@ Tab:CreateButton({
         end
         local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
 
-        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, BASE_Y, Z_OFFSET)
+        -- Match original Y level + your X/Z offsets
+        local destOrigin = localBuildArea.Position + Vector3.new(X_OFFSET, sourceCenter.Y - localBuildArea.Position.Y, Z_OFFSET)
 
-        Rayfield:Notify({Title = "Copying...", Content = "Testing exact resize...", Duration = 6})
+        Rayfield:Notify({Title = "Copying...", Content = "Matching original Y height...", Duration = 6})
 
         local createdParts = {}
 
@@ -125,26 +126,26 @@ Tab:CreateButton({
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
 
-                -- Your exact resize remote (sideways version)
+                -- Your exact resize
                 remote:InvokeServer("SyncResize",
-                    {{
-                        Part = newPart,
-                        CFrame = targetCFrame,
-                        Size = sourcePart.Size
+                    {{ 
+                        Part = newPart, 
+                        CFrame = targetCFrame, 
+                        Size = sourcePart.Size 
                     }},
-                    {
-                        "ResizeFace",
-                        Enum.NormalId.Right,
-                        0,
-                        Vector3.new(0, 0, 0),
-                        "X",
-                        Vector3.xAxis,
-                        "Normal"
+                    { 
+                        "ResizeFace", 
+                        Enum.NormalId.Right, 
+                        0, 
+                        Vector3.new(0, 0, 0), 
+                        "X", 
+                        Vector3.xAxis, 
+                        "Normal" 
                     }
                 )
-                task.wait(0.5)
+                task.wait(0.4)
 
-                -- Your perfect rotation (keep this)
+                -- Your perfect rotation (keep this exactly)
                 remote:InvokeServer("SyncRotate",
                     {{ Part = newPart, CFrame = targetCFrame }},
                     {
@@ -157,10 +158,11 @@ Tab:CreateButton({
                         "Local"
                     }
                 )
-                task.wait(0.5)
+                task.wait(0.4)
 
+                -- Move
                 remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
-                task.wait(0.5)
+                task.wait(0.4)
             end
         end
 
@@ -177,4 +179,4 @@ Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
     Dropdown:Refresh(playerOptions)
 end })
 
-Rayfield:Notify({Title = "Exact Resize Test", Content = "Using your exact SyncResize remote", Duration = 8})
+Rayfield:Notify({Title = "Y Level Matched", Content = "Copied build will have same Y height as original", Duration = 8})
