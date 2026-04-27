@@ -1,43 +1,42 @@
--- Town Build Copier - Final Optimized (Single Direct | Mixed AroundPivot + Extra Retry)
-
+-- Town Build Copier - Fixed Version
+ 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-
+ 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Final Optimized",
+    Name = "Town Plot Copier - Fixed",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
-
+ 
 local Tab = Window:CreateTab("Copier", "hammer")
-
+ 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
-
+ 
 local BUILDING_AREAS = Workspace:WaitForChild("Private Building Areas")
-
+ 
 local DebugLog = {}
-
+ 
 local function log(msg)
     local line = os.date("%X") .. " | " .. msg
     table.insert(DebugLog, line)
     print("[Copier] " .. msg)
 end
-
+ 
 local function getRemote()
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local tool = char:WaitForChild("Building Tools", 5)
     if not tool then error("Equip Building Tools!") end
     return tool:WaitForChild("SyncAPI"):WaitForChild("ServerEndpoint")
 end
-
+ 
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
 local localBuildFolder = localBuildArea:WaitForChild("Build")
-
+ 
 local selectedPlayer = nil
-
 local playerOptions = {}
-
+ 
 local function refreshPlayers()
     playerOptions = {}
     for _, plr in ipairs(Players:GetPlayers()) do
@@ -47,7 +46,7 @@ local function refreshPlayers()
     end
 end
 refreshPlayers()
-
+ 
 Tab:CreateSection("Player")
 local Dropdown = Tab:CreateDropdown({
     Name = "Select Player to Copy From",
@@ -58,154 +57,198 @@ local Dropdown = Tab:CreateDropdown({
         selectedPlayer = (typeof(Option) == "table" and #Option > 0) and Players:FindFirstChild(Option[1]) or nil
     end,
 })
-
+ 
 Tab:CreateButton({
-    Name = "🔄 Copy Build (Final Optimized)",
-    Description = "Smart rotation + aggressive resize + retry",
+    Name = "Copy Build",
+    Description = "Copies the selected player's build to your plot",
     Callback = function()
         if not selectedPlayer then
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
             return
         end
-
+ 
         DebugLog = {}
         log("=== COPY STARTED ===")
         log("Target player: " .. selectedPlayer.Name)
-
+ 
         local remote = getRemote()
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
-        if not sourceArea then return end
-
+        if not sourceArea then
+            log("ERROR: Source area not found")
+            return
+        end
+ 
         local sourceBuild = sourceArea:WaitForChild("Build")
         log("Source build folder located")
-
+ 
+        -- Collect all BaseParts from source
         local allParts = {}
-        local function collect(obj)
-            for _, v in ipairs(obj:GetDescendants()) do
-                if v:IsA("BasePart") then table.insert(allParts, v) end
+        for _, v in ipairs(sourceBuild:GetDescendants()) do
+            if v:IsA("BasePart") then
+                table.insert(allParts, v)
             end
         end
-        collect(sourceBuild)
-
+ 
         log("Found " .. #allParts .. " BaseParts")
-
+ 
+        if #allParts == 0 then
+            Rayfield:Notify({Title = "Error", Content = "No parts found in source build!"})
+            return
+        end
+ 
+        -- Compute the centroid of the source build using CFrame positions
         local sumX, sumY, sumZ = 0, 0, 0
         for _, p in ipairs(allParts) do
-            local pos = p.Position
-            sumX += pos.X; sumY += pos.Y; sumZ += pos.Z
+            sumX += p.CFrame.Position.X
+            sumY += p.CFrame.Position.Y
+            sumZ += p.CFrame.Position.Z
         end
-        local sourceCenter = Vector3.new(sumX/#allParts, sumY/#allParts, sumZ/#allParts)
-
+        local sourceCenter = Vector3.new(sumX / #allParts, sumY / #allParts, sumZ / #allParts)
+        local sourceCenterCFrame = CFrame.new(sourceCenter)
+ 
+        -- Destination origin: align to local build area, preserve Y offset from source center
         local destOrigin = localBuildArea.Position + Vector3.new(0, sourceCenter.Y - localBuildArea.Position.Y, 0)
-
+        local destCenterCFrame = CFrame.new(destOrigin)
+ 
+        log("Source center: " .. tostring(sourceCenter))
+        log("Dest origin: " .. tostring(destOrigin))
+ 
         local createdParts = {}
-        local processed = {}
-
+ 
         for i, sourcePart in ipairs(allParts) do
-            local offset = sourcePart.Position - sourceCenter
-            local targetPos = destOrigin + offset
-
-            local rotX, rotY, rotZ = 0, 0, 0
-            if sourcePart.Rotation and typeof(sourcePart.Rotation) == "Vector3" then
-                rotX = sourcePart.Rotation.X
-                rotY = sourcePart.Rotation.Y
-                rotZ = sourcePart.Rotation.Z
-                log(string.format("Part %d | Rotation: %.2f, %.2f, %.2f", i, rotX, rotY, rotZ))
-            end
-
-            local targetCFrame = CFrame.new(targetPos) * CFrame.fromEulerAnglesXYZ(math.rad(rotX), math.rad(rotY), math.rad(rotZ))
-
+            -- Compute the relative CFrame of this part from the source center
+            -- This correctly preserves both position offset AND full rotation
+            local relCFrame = sourceCenterCFrame:ToObjectSpace(sourcePart.CFrame)
+ 
+            -- Apply that relative CFrame at the destination
+            local targetCFrame = destCenterCFrame * relCFrame
+ 
+            -- Map ClassName to partType string expected by the remote
             local partType = "Normal"
             local class = sourcePart.ClassName
-            if class == "TrussPart" then partType = "Truss"
-            elseif class == "WedgePart" then partType = "Wedge"
-            elseif class == "CornerWedgePart" then partType = "Corner"
-            elseif class == "Cylinder" or sourcePart.Shape == Enum.PartType.Cylinder then partType = "Cylinder"
-            elseif sourcePart.Shape == Enum.PartType.Ball then partType = "Ball"
-            elseif class == "Seat" then partType = "Seat"
-            elseif class == "VehicleSeat" then partType = "Vehicle Seat"
-            elseif class == "SpawnLocation" then partType = "Spawn"
+            if class == "TrussPart" then
+                partType = "Truss"
+            elseif class == "WedgePart" then
+                partType = "Wedge"
+            elseif class == "CornerWedgePart" then
+                partType = "Corner"
+            elseif class == "Seat" then
+                partType = "Seat"
+            elseif class == "VehicleSeat" then
+                partType = "Vehicle Seat"
+            elseif class == "SpawnLocation" then
+                partType = "Spawn"
+            elseif class == "Part" then
+                -- Handle shape variants for regular Parts
+                local ok, shape = pcall(function() return sourcePart.Shape end)
+                if ok then
+                    if shape == Enum.PartType.Cylinder then
+                        partType = "Cylinder"
+                    elseif shape == Enum.PartType.Ball then
+                        partType = "Ball"
+                    end
+                end
             end
-
-            local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetPos), localBuildFolder)
-
+ 
+            log(string.format("Part %d | Type: %s | TargetCF: %s", i, partType, tostring(targetCFrame)))
+ 
+            -- Create the part at the target position first (without rotation, remote places it)
+            local newPart = remote:InvokeServer("CreatePart", partType, CFrame.new(targetCFrame.Position), localBuildFolder)
+ 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
-                table.insert(processed, {newPart = newPart, sourcePart = sourcePart, targetCFrame = targetCFrame, rotX = rotX, rotY = rotY, rotZ = rotZ})
-
+ 
                 local sourceSize = sourcePart.Size
-
-                -- Very aggressive resize
-                task.wait(0.4)
-                for _ = 1, 6 do
-                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(sourceSize.X - newPart.Size.X, 0, 0), "X", sourceSize })
-                    task.wait(0.15)
-                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, sourceSize.Y - newPart.Size.Y, 0), "Y", sourceSize })
-                    task.wait(0.15)
-                    remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = targetCFrame, Size = sourceSize }}, { "Direct", Vector3.new(0, 0, sourceSize.Z - newPart.Size.Z), "Z", sourceSize })
-                    task.wait(0.15)
-                end
-
-                log("  Resize finished | Final Size: " .. tostring(newPart.Size))
-
-                -- Smart Rotation
-                local nonZeroAxes = 0
-                if math.abs(rotX) > 2 then nonZeroAxes = nonZeroAxes + 1 end
-                if math.abs(rotY) > 2 then nonZeroAxes = nonZeroAxes + 1 end
-                if math.abs(rotZ) > 2 then nonZeroAxes = nonZeroAxes + 1 end
-
-                if nonZeroAxes <= 1 then
-                    log("  Single-axis - Direct")
-                    remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotX), "X" })
-                    task.wait(0.25)
-                    remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotY), "Y" })
-                    task.wait(0.25)
-                    remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotZ), "Z" })
-                    task.wait(0.25)
-                else
-                    log("  Mixed - AroundPivot + second pass")
-                    remote:InvokeServer("SyncRotate", 
-                        {{ Part = newPart, CFrame = targetCFrame }},
-                        { "AroundPivot", targetCFrame.Rotation, "Center", CFrame.new(), "Center" }
-                    )
-                    task.wait(0.6)
-                    -- Second pass for stubborn mixed rotations
-                    remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotX), "X" })
-                    task.wait(0.25)
-                    remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotY), "Y" })
-                    task.wait(0.25)
-                    remote:InvokeServer("SyncRotate", {{ Part = newPart, CFrame = targetCFrame }}, { "Direct", math.rad(rotZ), "Z" })
-                    task.wait(0.25)
-                end
-
-                remote:InvokeServer("SyncMove", {{Part = newPart, CFrame = targetCFrame}}, {"AlongFace", Vector3.new(), "Global", CFrame.new()})
+                log(string.format("  Target size: %s", tostring(sourceSize)))
+ 
+                -- Wait for part to register server-side
                 task.wait(0.3)
-
-                log("  Part complete")
+ 
+                -- Resize: attempt multiple times to converge on the correct size
+                -- Each axis is sent separately as the remote expects a delta direction
+                for attempt = 1, 8 do
+                    local currentSize = newPart.Size
+                    local diffX = sourceSize.X - currentSize.X
+                    local diffY = sourceSize.Y - currentSize.Y
+                    local diffZ = sourceSize.Z - currentSize.Z
+ 
+                    -- Stop early if size is already correct (within tolerance)
+                    if math.abs(diffX) < 0.01 and math.abs(diffY) < 0.01 and math.abs(diffZ) < 0.01 then
+                        log(string.format("  Resize converged on attempt %d", attempt))
+                        break
+                    end
+ 
+                    if math.abs(diffX) >= 0.01 then
+                        remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = CFrame.new(targetCFrame.Position), Size = sourceSize }}, { "Direct", Vector3.new(diffX, 0, 0), "X", sourceSize })
+                        task.wait(0.1)
+                    end
+                    if math.abs(diffY) >= 0.01 then
+                        remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = CFrame.new(targetCFrame.Position), Size = sourceSize }}, { "Direct", Vector3.new(0, diffY, 0), "Y", sourceSize })
+                        task.wait(0.1)
+                    end
+                    if math.abs(diffZ) >= 0.01 then
+                        remote:InvokeServer("SyncResize", {{ Part = newPart, CFrame = CFrame.new(targetCFrame.Position), Size = sourceSize }}, { "Direct", Vector3.new(0, 0, diffZ), "Z", sourceSize })
+                        task.wait(0.1)
+                    end
+                end
+ 
+                log(string.format("  Final size: %s", tostring(newPart.Size)))
+ 
+                -- Apply full rotation using AroundPivot with the correct targetCFrame
+                -- This sends the complete rotation component of the CFrame directly,
+                -- avoiding any gimbal lock or axis ordering issues from Euler decomposition
+                task.wait(0.2)
+                remote:InvokeServer("SyncRotate",
+                    {{ Part = newPart, CFrame = targetCFrame }},
+                    { "AroundPivot", targetCFrame.Rotation, "Center", CFrame.new(), "Center" }
+                )
+                task.wait(0.4)
+ 
+                -- Final position sync to lock the part exactly at targetCFrame
+                -- (rotation op may have shifted the pivot slightly)
+                remote:InvokeServer("SyncMove",
+                    {{ Part = newPart, CFrame = targetCFrame }},
+                    { "AlongFace", targetCFrame.Position - newPart.Position, "Global", CFrame.new() }
+                )
+                task.wait(0.2)
+ 
+                log(string.format("  Part %d complete | Pos: %s", i, tostring(newPart.Position)))
+            else
+                log(string.format("  Part %d FAILED to create", i))
             end
         end
-
+ 
+        -- Group all created parts into a model
         if #createdParts > 0 then
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
-
-        log("=== COPY FINISHED ===")
-        Rayfield:Notify({Title = "Finished", Content = #createdParts .. " parts created", Duration = 10})
+ 
+        log("=== COPY FINISHED === | Parts created: " .. #createdParts)
+        Rayfield:Notify({
+            Title = "Finished",
+            Content = #createdParts .. " / " .. #allParts .. " parts copied",
+            Duration = 10
+        })
     end,
 })
-
+ 
 Tab:CreateButton({
-    Name = "📋 Copy Full Debug Log",
+    Name = "Copy Debug Log",
     Callback = function()
         local text = table.concat(DebugLog, "\n")
         if setclipboard then setclipboard(text) end
-        Rayfield:Notify({Title = "Copied", Content = "Full debug log copied", Duration = 5})
+        Rayfield:Notify({Title = "Copied", Content = "Debug log copied to clipboard", Duration = 5})
     end,
 })
-
-Tab:CreateButton({ Name = "Refresh Player List", Callback = function()
-    refreshPlayers()
-    Dropdown:Refresh(playerOptions)
-end })
-
-Rayfield:Notify({Title = "Loaded", Content = "Final: Smart rotation + extra mixed pass", Duration = 8})
+ 
+Tab:CreateButton({
+    Name = "Refresh Player List",
+    Callback = function()
+        refreshPlayers()
+        Dropdown:Refresh(playerOptions)
+        Rayfield:Notify({Title = "Refreshed", Content = "Player list updated", Duration = 3})
+    end,
+})
+ 
+Rayfield:Notify({Title = "Loaded", Content = "Build Copier ready", Duration = 5})
+ 
