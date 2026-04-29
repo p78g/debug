@@ -1,42 +1,42 @@
--- Town Build Copier - Fixed v3
-
+-- Town Build Copier - Fixed v4
+ 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-
+ 
 local Window = Rayfield:CreateWindow({
-    Name = "Town Plot Copier - Fixed v3",
+    Name = "Town Plot Copier - Fixed v4",
     LoadingTitle = "Loading...",
     Theme = "Default"
 })
-
+ 
 local Tab = Window:CreateTab("Copier", "hammer")
-
+ 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
-
+ 
 local BUILDING_AREAS = Workspace:WaitForChild("Private Building Areas")
-
+ 
 local DebugLog = {}
-
+ 
 local function log(msg)
     local line = os.date("%X") .. " | " .. msg
     table.insert(DebugLog, line)
     print("[Copier] " .. msg)
 end
-
+ 
 local function getRemote()
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local tool = char:WaitForChild("Building Tools", 5)
     if not tool then error("Equip Building Tools!") end
     return tool:WaitForChild("SyncAPI"):WaitForChild("ServerEndpoint")
 end
-
+ 
 local localBuildArea = BUILDING_AREAS:WaitForChild(LocalPlayer.Name .. "BuildArea")
 local localBuildFolder = localBuildArea:WaitForChild("Build")
-
+ 
 local selectedPlayer = nil
 local playerOptions = {}
-
+ 
 local function refreshPlayers()
     playerOptions = {}
     for _, plr in ipairs(Players:GetPlayers()) do
@@ -46,9 +46,9 @@ local function refreshPlayers()
     end
 end
 refreshPlayers()
-
--- Waits for newPart.Size to actually change from lastSize (server replication delay)
--- Returns true if it changed within timeout, false if it didn't move
+ 
+-- Wait for a part's size to change from lastSize, up to timeout seconds
+-- Returns the new size, or lastSize if timed out
 local function waitForSizeChange(part, lastSize, timeout)
     local t = 0
     while t < timeout do
@@ -58,39 +58,67 @@ local function waitForSizeChange(part, lastSize, timeout)
         if math.abs(s.X - lastSize.X) > 0.005
             or math.abs(s.Y - lastSize.Y) > 0.005
             or math.abs(s.Z - lastSize.Z) > 0.005 then
-            return true
+            return part.Size
         end
     end
+    return lastSize
+end
+ 
+-- The resize remote moves by a fixed internal step per call (not by your delta value).
+-- We send a unit-direction vector and call once, then wait for replication.
+-- We repeat until the axis converges or max steps exceeded.
+local function resizeToTarget(remote, part, targetSize, maxSteps)
+    maxSteps = maxSteps or 60
+ 
+    for step = 1, maxSteps do
+        local liveSize = part.Size
+        local liveCF   = part.CFrame
+ 
+        local dX = targetSize.X - liveSize.X
+        local dY = targetSize.Y - liveSize.Y
+        local dZ = targetSize.Z - liveSize.Z
+ 
+        -- All axes within tolerance: done
+        if math.abs(dX) < 0.05 and math.abs(dY) < 0.05 and math.abs(dZ) < 0.05 then
+            log(string.format("    Resize done in %d steps | %s", step, tostring(liveSize)))
+            return true
+        end
+ 
+        -- Pick the axis with the largest remaining error and nudge it by one unit step
+        -- in the correct direction. The magnitude of the vector does not matter to the
+        -- remote — only the sign/direction does.
+        local axis, dir
+        if math.abs(dX) >= math.abs(dY) and math.abs(dX) >= math.abs(dZ) then
+            axis = "X"
+            dir  = Vector3.new(dX > 0 and 1 or -1, 0, 0)
+        elseif math.abs(dY) >= math.abs(dZ) then
+            axis = "Y"
+            dir  = Vector3.new(0, dY > 0 and 1 or -1, 0)
+        else
+            axis = "Z"
+            dir  = Vector3.new(0, 0, dZ > 0 and 1 or -1)
+        end
+ 
+        remote:InvokeServer("SyncResize",
+            {{ Part = part, CFrame = liveCF, Size = liveSize }},
+            { "Direct", dir, axis, targetSize }
+        )
+ 
+        -- Wait for the server to apply and replicate this one step before sending another
+        local newSize = waitForSizeChange(part, liveSize, 0.8)
+ 
+        -- Safety: if the size didn't move at all, the remote may be rate-limiting us
+        -- Wait longer and try again rather than hammering it
+        if newSize == liveSize then
+            log(string.format("    Step %d: no change on axis %s, waiting...", step, axis))
+            task.wait(0.5)
+        end
+    end
+ 
+    log("    WARNING: resize did not converge after " .. maxSteps .. " steps | Final: " .. tostring(part.Size))
     return false
 end
-
--- Resizes a single axis once, waits for replication, returns true if size moved
-local function resizeAxis(remote, part, axis, targetSize)
-    local liveCF = part.CFrame
-    local liveSize = part.Size
-    local diff
-    if axis == "X" then diff = targetSize.X - liveSize.X
-    elseif axis == "Y" then diff = targetSize.Y - liveSize.Y
-    else diff = targetSize.Z - liveSize.Z
-    end
-
-    if math.abs(diff) < 0.01 then return true end -- already correct
-
-    local delta = axis == "X" and Vector3.new(diff, 0, 0)
-              or axis == "Y" and Vector3.new(0, diff, 0)
-              or Vector3.new(0, 0, diff)
-
-    remote:InvokeServer("SyncResize",
-        {{ Part = part, CFrame = liveCF, Size = liveSize }},
-        { "Direct", delta, axis, targetSize }
-    )
-
-    -- Wait for server to replicate the new size before reading it again
-    -- This prevents the loop from re-sending the same delta a second time
-    local changed = waitForSizeChange(part, liveSize, 1.0)
-    return changed
-end
-
+ 
 Tab:CreateSection("Player")
 local Dropdown = Tab:CreateDropdown({
     Name = "Select Player to Copy From",
@@ -101,7 +129,7 @@ local Dropdown = Tab:CreateDropdown({
         selectedPlayer = (typeof(Option) == "table" and #Option > 0) and Players:FindFirstChild(Option[1]) or nil
     end,
 })
-
+ 
 Tab:CreateButton({
     Name = "Copy Build",
     Description = "Copies the selected player's build to your plot",
@@ -110,151 +138,137 @@ Tab:CreateButton({
             Rayfield:Notify({Title = "Error", Content = "Select player first!"})
             return
         end
-
+ 
         DebugLog = {}
         log("=== COPY STARTED ===")
         log("Target player: " .. selectedPlayer.Name)
-
+ 
         local remote = getRemote()
         local sourceArea = BUILDING_AREAS:FindFirstChild(selectedPlayer.Name .. "BuildArea")
         if not sourceArea then
             log("ERROR: Source area not found")
             return
         end
-
+ 
         local sourceBuild = sourceArea:WaitForChild("Build")
         log("Source build folder located")
-
+ 
         local allParts = {}
         for _, v in ipairs(sourceBuild:GetDescendants()) do
             if v:IsA("BasePart") then
                 table.insert(allParts, v)
             end
         end
-
+ 
         log("Found " .. #allParts .. " BaseParts")
-
+ 
         if #allParts == 0 then
             Rayfield:Notify({Title = "Error", Content = "No parts found in source build!"})
             return
         end
-
+ 
         local sumX, sumY, sumZ = 0, 0, 0
         for _, p in ipairs(allParts) do
             sumX += p.CFrame.Position.X
             sumY += p.CFrame.Position.Y
             sumZ += p.CFrame.Position.Z
         end
-        local sourceCenter = Vector3.new(sumX / #allParts, sumY / #allParts, sumZ / #allParts)
-        local sourceCenterCFrame = CFrame.new(sourceCenter)
-
-        local destOrigin = localBuildArea.Position + Vector3.new(0, sourceCenter.Y - localBuildArea.Position.Y, 0)
-        local destCenterCFrame = CFrame.new(destOrigin)
-
+        local sourceCenter    = Vector3.new(sumX / #allParts, sumY / #allParts, sumZ / #allParts)
+        local sourceCenterCF  = CFrame.new(sourceCenter)
+        local destOrigin      = localBuildArea.Position + Vector3.new(0, sourceCenter.Y - localBuildArea.Position.Y, 0)
+        local destCenterCF    = CFrame.new(destOrigin)
+ 
         log("Source center: " .. tostring(sourceCenter))
-        log("Dest origin: " .. tostring(destOrigin))
-
+        log("Dest origin:   " .. tostring(destOrigin))
+ 
         local createdParts = {}
-
+ 
         for i, sourcePart in ipairs(allParts) do
-            local relCFrame = sourceCenterCFrame:ToObjectSpace(sourcePart.CFrame)
-            local targetCFrame = destCenterCFrame * relCFrame
-
-            -- Spawn at position only (no rotation) — remote rejects rotated CFrames on creation
-            -- Raise by 0.5 if very close to ground to avoid server rejecting the placement
-            local spawnY = targetCFrame.Position.Y
-            local groundBias = (spawnY < 10) and 0.5 or 0
-            local spawnCFrame = CFrame.new(
-                targetCFrame.Position.X,
-                spawnY + groundBias,
-                targetCFrame.Position.Z
-            )
-
+            -- Inter-part cooldown: give the server time to settle between parts
+            -- This prevents rate-limit failures on consecutive CreatePart calls
+            if i > 1 then task.wait(0.6) end
+ 
+            local relCFrame    = sourceCenterCF:ToObjectSpace(sourcePart.CFrame)
+            local targetCFrame = destCenterCF * relCFrame
+ 
+            -- Spawn position only (no rotation) — remote rejects rotated creation CFrames
+            local spawnCFrame = CFrame.new(targetCFrame.Position)
+ 
             local partType = "Normal"
             local class = sourcePart.ClassName
-            if class == "TrussPart" then partType = "Truss"
-            elseif class == "WedgePart" then partType = "Wedge"
+            if class == "TrussPart"       then partType = "Truss"
+            elseif class == "WedgePart"   then partType = "Wedge"
             elseif class == "CornerWedgePart" then partType = "Corner"
-            elseif class == "Seat" then partType = "Seat"
+            elseif class == "Seat"        then partType = "Seat"
             elseif class == "VehicleSeat" then partType = "Vehicle Seat"
             elseif class == "SpawnLocation" then partType = "Spawn"
             elseif class == "Part" then
                 local ok, shape = pcall(function() return sourcePart.Shape end)
                 if ok then
                     if shape == Enum.PartType.Cylinder then partType = "Cylinder"
-                    elseif shape == Enum.PartType.Ball then partType = "Ball"
+                    elseif shape == Enum.PartType.Ball  then partType = "Ball"
                     end
                 end
             end
-
-            log(string.format("Part %d | Type: %s | SpawnPos: %s", i, partType, tostring(spawnCFrame.Position)))
-
-            local newPart = remote:InvokeServer("CreatePart", partType, spawnCFrame, localBuildFolder)
-
+ 
+            log(string.format("Part %d | Type: %s | Pos: %s | Size: %s",
+                i, partType, tostring(spawnCFrame.Position), tostring(sourcePart.Size)))
+ 
+            -- Retry creation up to 3 times in case of transient server rejection
+            local newPart = nil
+            for attempt = 1, 3 do
+                newPart = remote:InvokeServer("CreatePart", partType, spawnCFrame, localBuildFolder)
+                if newPart and newPart:IsA("BasePart") then break end
+                log(string.format("  Create attempt %d failed, retrying...", attempt))
+                task.wait(0.8)
+            end
+ 
             if newPart and newPart:IsA("BasePart") then
                 table.insert(createdParts, newPart)
-
-                local sourceSize = sourcePart.Size
-                log(string.format("  Target size: %s | Default size on spawn: %s", tostring(sourceSize), tostring(newPart.Size)))
-
-                -- Wait for the newly created part to replicate fully before reading its size
+ 
+                -- Wait for part to fully replicate before touching it
                 task.wait(0.4)
-
-                -- Resize each axis independently, waiting for server confirmation between each.
-                -- We only send ONE resize per axis per iteration — we never re-send the same
-                -- delta twice because waitForSizeChange blocks until the server has applied it.
-                for attempt = 1, 12 do
-                    local s = newPart.Size
-                    local dX = math.abs(sourceSize.X - s.X)
-                    local dY = math.abs(sourceSize.Y - s.Y)
-                    local dZ = math.abs(sourceSize.Z - s.Z)
-
-                    if dX < 0.01 and dY < 0.01 and dZ < 0.01 then
-                        log(string.format("  Resize converged on attempt %d | Size: %s", attempt, tostring(newPart.Size)))
-                        break
-                    end
-
-                    log(string.format("  Resize attempt %d | Current: %s | Diff: %.3f %.3f %.3f", attempt, tostring(s), dX, dY, dZ))
-
-                    if dX >= 0.01 then resizeAxis(remote, newPart, "X", sourceSize) end
-                    if dY >= 0.01 then resizeAxis(remote, newPart, "Y", sourceSize) end
-                    if dZ >= 0.01 then resizeAxis(remote, newPart, "Z", sourceSize) end
-                end
-
+ 
+                local sourceSize = sourcePart.Size
+                log(string.format("  Spawned | Default size: %s | Target size: %s",
+                    tostring(newPart.Size), tostring(sourceSize)))
+ 
+                -- Resize using unit-step approach (one step per call, wait for replication)
+                resizeToTarget(remote, newPart, sourceSize, 80)
+ 
                 log(string.format("  Final size: %s", tostring(newPart.Size)))
-
-                -- Apply rotation using the live CFrame as anchor
+ 
+                -- Apply rotation
                 task.wait(0.2)
-                local liveCF = newPart.CFrame
                 remote:InvokeServer("SyncRotate",
-                    {{ Part = newPart, CFrame = liveCF }},
+                    {{ Part = newPart, CFrame = newPart.CFrame }},
                     { "AroundPivot", targetCFrame.Rotation, "Center", CFrame.new(), "Center" }
                 )
                 task.wait(0.5)
-
-                -- Correct position if rotation shifted the pivot
-                local posAfterRotate = newPart.CFrame
-                local posDelta = targetCFrame.Position - posAfterRotate.Position
+ 
+                -- Correct position if rotation shifted the part
+                local posDelta = targetCFrame.Position - newPart.CFrame.Position
                 if posDelta.Magnitude > 0.05 then
-                    log(string.format("  Position correction needed: %s", tostring(posDelta)))
+                    log(string.format("  Position correction: %s", tostring(posDelta)))
                     remote:InvokeServer("SyncMove",
-                        {{ Part = newPart, CFrame = posAfterRotate }},
+                        {{ Part = newPart, CFrame = newPart.CFrame }},
                         { "AlongFace", posDelta, "Global", CFrame.new() }
                     )
                     task.wait(0.2)
                 end
-
-                log(string.format("  Part %d done | Size: %s | Pos: %s", i, tostring(newPart.Size), tostring(newPart.Position)))
+ 
+                log(string.format("  Part %d done | Size: %s | Pos: %s",
+                    i, tostring(newPart.Size), tostring(newPart.Position)))
             else
-                log(string.format("  Part %d FAILED to create (type=%s, pos=%s)", i, partType, tostring(spawnCFrame.Position)))
+                log(string.format("  Part %d FAILED after 3 attempts", i))
             end
         end
-
+ 
         if #createdParts > 0 then
             remote:InvokeServer("CreateGroup", "Model", localBuildFolder, createdParts)
         end
-
-        log("=== COPY FINISHED === | Parts created: " .. #createdParts .. " / " .. #allParts)
+ 
+        log("=== COPY FINISHED === | " .. #createdParts .. " / " .. #allParts .. " parts")
         Rayfield:Notify({
             Title = "Finished",
             Content = #createdParts .. " / " .. #allParts .. " parts copied",
@@ -262,7 +276,7 @@ Tab:CreateButton({
         })
     end,
 })
-
+ 
 Tab:CreateButton({
     Name = "Copy Debug Log",
     Callback = function()
@@ -271,7 +285,7 @@ Tab:CreateButton({
         Rayfield:Notify({Title = "Copied", Content = "Debug log copied", Duration = 5})
     end,
 })
-
+ 
 Tab:CreateButton({
     Name = "Refresh Player List",
     Callback = function()
@@ -280,5 +294,5 @@ Tab:CreateButton({
         Rayfield:Notify({Title = "Refreshed", Content = "Player list updated", Duration = 3})
     end,
 })
-
-Rayfield:Notify({Title = "Loaded", Content = "Build Copier v3 ready", Duration = 5})
+ 
+Rayfield:Notify({Title = "Loaded", Content = "Build Copier v4 ready", Duration = 5})
