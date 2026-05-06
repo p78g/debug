@@ -1,5 +1,5 @@
 -- Open source for y'all ❤️‍🩹🥹✌️
--- Extended desync duration + player outline visualization
+-- Added visual marker + extended desync refresh (fools server longer)
 
 local plsraknet = Raknet or raknet
 if not plsraknet then return end
@@ -9,6 +9,7 @@ local TweenService = game:GetService("TweenService")
 local UIS = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
@@ -61,76 +62,46 @@ Label.TextSize = 16
 Label.Parent = Frame
 
 local Toggled = false
-local frozenMarker = nil  -- anchor part with highlight and glow
-local refreshTask = nil
+local marker = nil
+local refreshLoop = nil
 
--- Create the visual marker (outline + red glow at desync spot)
-local function createMarker()
-    if frozenMarker then frozenMarker:Destroy() end
-    
+-- Marker (red neon part + decal)
+local function placeMarker()
+    if marker then marker:Destroy() end
     local pos = root.Position
-    -- Anchor part (invisible) to hold highlight
-    local anchor = Instance.new("Part")
-    anchor.Size = Vector3.new(1, 1, 1)
-    anchor.Transparency = 1
-    anchor.Anchored = true
-    anchor.CanCollide = false
-    anchor.Position = pos
-    anchor.Name = "DesyncMarker"
-    anchor.Parent = Workspace
-    
-    -- Highlight outline of the player (stays with anchor)
-    local highlight = Instance.new("Highlight")
-    highlight.FillColor = Color3.fromRGB(255, 0, 0)
-    highlight.FillTransparency = 0.65
-    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-    highlight.OutlineTransparency = 0.1
-    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    highlight.Parent = anchor
-    
-    -- Ground glow (neon ring)
-    local glow = Instance.new("Part")
-    glow.Size = Vector3.new(3, 0.2, 3)
-    glow.Shape = Enum.PartType.Cylinder
-    glow.BrickColor = BrickColor.new("Really red")
-    glow.Material = Enum.Material.Neon
-    glow.Transparency = 0.4
-    glow.Anchored = true
-    glow.CanCollide = false
-    glow.Position = pos - Vector3.new(0, 1, 0)
-    glow.Parent = anchor
-    
-    -- Fade in effect
-    highlight.FillTransparency = 1
-    glow.Transparency = 1
-    TweenService:Create(highlight, TweenInfo.new(0.3), {FillTransparency = 0.65}):Play()
-    TweenService:Create(glow, TweenInfo.new(0.3), {Transparency = 0.4}):Play()
-    
-    frozenMarker = anchor
+    marker = Instance.new("Part")
+    marker.Size = Vector3.new(2, 0.5, 2)
+    marker.Position = pos
+    marker.Anchored = true
+    marker.CanCollide = false
+    marker.BrickColor = BrickColor.new("Bright red")
+    marker.Material = Enum.Material.Neon
+    marker.Transparency = 0.3
+    local decal = Instance.new("Decal")
+    decal.Texture = "rbxassetid://160501115"
+    decal.Face = Enum.NormalId.Top
+    decal.Parent = marker
+    marker.Parent = Workspace
+    marker.Transparency = 0.8
+    TweenService:Create(marker, TweenInfo.new(0.3), {Transparency = 0.3}):Play()
 end
 
 local function removeMarker()
-    if frozenMarker then
-        -- Fade out
-        for _, obj in pairs(frozenMarker:GetChildren()) do
-            if obj:IsA("Highlight") then
-                TweenService:Create(obj, TweenInfo.new(0.2), {FillTransparency = 1}):Play()
-            elseif obj:IsA("BasePart") then
-                TweenService:Create(obj, TweenInfo.new(0.2), {Transparency = 1}):Play()
-            end
-        end
+    if marker then
+        TweenService:Create(marker, TweenInfo.new(0.2), {Transparency = 1}):Play()
         task.wait(0.2)
-        frozenMarker:Destroy()
-        frozenMarker = nil
+        marker:Destroy()
+        marker = nil
     end
 end
 
--- Extended desync: refresh ownership every few seconds
-local function startRefreshLoop()
-    if refreshTask then task.cancel(refreshTask) end
-    refreshTask = task.spawn(function()
+-- Extended desync: refreshes every 2.5 seconds to avoid stale state
+local function startRefresh()
+    if refreshLoop then task.cancel(refreshLoop) end
+    refreshLoop = task.spawn(function()
         while Toggled and plsraknet and plsraknet.desync do
-            task.wait(3)  -- refresh every 3 seconds
+            task.wait(2.5)
+            -- Briefly disable and re-enable desync
             plsraknet.desync(false)
             task.wait(0.05)
             plsraknet.desync(true)
@@ -138,24 +109,28 @@ local function startRefreshLoop()
     end)
 end
 
+local function stopRefresh()
+    if refreshLoop then task.cancel(refreshLoop) refreshLoop = nil end
+end
+
+-- UI toggle
 local function updateToggle(state)
     local knobPos = state and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
     local bgColor = state and Color3.fromRGB(80,80,80) or Color3.fromRGB(40,40,40)
-    
     TweenService:Create(Knob, TweenInfo.new(0.2), {Position = knobPos}):Play()
     TweenService:Create(ToggleButton, TweenInfo.new(0.2), {BackgroundColor3 = bgColor}):Play()
-    
+
     if state then
-        createMarker()
+        placeMarker()
         if plsraknet and plsraknet.desync then
             plsraknet.desync(true)
-            startRefreshLoop()
+            startRefresh()
         end
     else
         removeMarker()
         if plsraknet and plsraknet.desync then
+            stopRefresh()
             plsraknet.desync(false)
-            if refreshTask then task.cancel(refreshTask) refreshTask = nil end
         end
     end
 end
@@ -165,7 +140,7 @@ ToggleButton.MouseButton1Click:Connect(function()
     updateToggle(Toggled)
 end)
 
--- Draggable UI
+-- Draggable UI (unchanged)
 local dragging, dragInput, dragStart, startPos
 Frame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -196,4 +171,14 @@ UIS.InputChanged:Connect(function(input)
     end
 end)
 
-print("Desync UI loaded. Toggle to freeze server position + visualize outline.")
+-- Cleanup on character respawn (optional)
+player.CharacterAdded:Connect(function()
+    if Toggled then
+        Toggled = false
+        updateToggle(false)
+    end
+    if marker then marker:Destroy() end
+    stopRefresh()
+end)
+
+print("Desync with part marker + refresh loop loaded. Toggle to freeze server position – refresh every 2.5s keeps it active longer.")
