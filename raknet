@@ -1,5 +1,5 @@
 -- Open source for y'all ❤️‍🩹🥹✌️
--- Added visual marker + extended desync refresh (fools server longer)
+-- Extended desync duration + OLD part marker (red neon + decal)
 
 local plsraknet = Raknet or raknet
 if not plsraknet then return end
@@ -9,7 +9,6 @@ local TweenService = game:GetService("TweenService")
 local UIS = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
@@ -62,11 +61,11 @@ Label.TextSize = 16
 Label.Parent = Frame
 
 local Toggled = false
-local marker = nil
-local refreshLoop = nil
+local marker = nil  -- red neon part
+local refreshTask = nil
 
--- Marker (red neon part + decal)
-local function placeMarker()
+-- OLD VISUALIZATION: red neon part + decal
+local function createMarker()
     if marker then marker:Destroy() end
     local pos = root.Position
     marker = Instance.new("Part")
@@ -78,10 +77,11 @@ local function placeMarker()
     marker.Material = Enum.Material.Neon
     marker.Transparency = 0.3
     local decal = Instance.new("Decal")
-    decal.Texture = "rbxassetid://160501115"
+    decal.Texture = "rbxassetid://160501115" -- red circle decal
     decal.Face = Enum.NormalId.Top
     decal.Parent = marker
     marker.Parent = Workspace
+    -- Fade in
     marker.Transparency = 0.8
     TweenService:Create(marker, TweenInfo.new(0.3), {Transparency = 0.3}):Play()
 end
@@ -95,13 +95,12 @@ local function removeMarker()
     end
 end
 
--- Extended desync: refreshes every 2.5 seconds to avoid stale state
-local function startRefresh()
-    if refreshLoop then task.cancel(refreshLoop) end
-    refreshLoop = task.spawn(function()
+-- Extended desync: refresh every 3 seconds to fool server longer
+local function startRefreshLoop()
+    if refreshTask then task.cancel(refreshTask) end
+    refreshTask = task.spawn(function()
         while Toggled and plsraknet and plsraknet.desync do
-            task.wait(2.5)
-            -- Briefly disable and re-enable desync
+            task.wait(3)
             plsraknet.desync(false)
             task.wait(0.05)
             plsraknet.desync(true)
@@ -109,28 +108,24 @@ local function startRefresh()
     end)
 end
 
-local function stopRefresh()
-    if refreshLoop then task.cancel(refreshLoop) refreshLoop = nil end
-end
-
--- UI toggle
 local function updateToggle(state)
     local knobPos = state and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
     local bgColor = state and Color3.fromRGB(80,80,80) or Color3.fromRGB(40,40,40)
+
     TweenService:Create(Knob, TweenInfo.new(0.2), {Position = knobPos}):Play()
     TweenService:Create(ToggleButton, TweenInfo.new(0.2), {BackgroundColor3 = bgColor}):Play()
 
     if state then
-        placeMarker()
+        createMarker()
         if plsraknet and plsraknet.desync then
             plsraknet.desync(true)
-            startRefresh()
+            startRefreshLoop()
         end
     else
         removeMarker()
         if plsraknet and plsraknet.desync then
-            stopRefresh()
             plsraknet.desync(false)
+            if refreshTask then task.cancel(refreshTask) refreshTask = nil end
         end
     end
 end
@@ -171,14 +166,4 @@ UIS.InputChanged:Connect(function(input)
     end
 end)
 
--- Cleanup on character respawn (optional)
-player.CharacterAdded:Connect(function()
-    if Toggled then
-        Toggled = false
-        updateToggle(false)
-    end
-    if marker then marker:Destroy() end
-    stopRefresh()
-end)
-
-print("Desync with part marker + refresh loop loaded. Toggle to freeze server position – refresh every 2.5s keeps it active longer.")
+print("Desync with part marker + refresh loaded. Toggle to freeze server position (red neon part).")
