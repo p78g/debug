@@ -1,5 +1,5 @@
 -- Open source for y'all ❤️‍🩹🥹✌️
--- Desync w/ part marker + extended fooling (no GUI changes)
+-- Extended desync duration + player outline visualization
 
 local plsraknet = Raknet or raknet
 if not plsraknet then return end
@@ -9,14 +9,11 @@ local TweenService = game:GetService("TweenService")
 local UIS = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local root = character:WaitForChild("HumanoidRootPart")
-local humanoid = character:WaitForChild("Humanoid")
 
--- GUI elements (same as before)
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Parent = CoreGui
 
@@ -63,63 +60,77 @@ Label.Font = Enum.Font.SourceSans
 Label.TextSize = 16
 Label.Parent = Frame
 
--- Desync state
 local Toggled = false
-local markerPart = nil
-local refreshLoop = nil
-local heartbeatHook = nil
+local frozenMarker = nil  -- anchor part with highlight and glow
+local refreshTask = nil
 
--- Marker creation (old red part + decal)
+-- Create the visual marker (outline + red glow at desync spot)
 local function createMarker()
-    if markerPart then markerPart:Destroy() end
+    if frozenMarker then frozenMarker:Destroy() end
+    
     local pos = root.Position
-    markerPart = Instance.new("Part")
-    markerPart.Size = Vector3.new(2.5, 0.5, 2.5)
-    markerPart.Position = pos
-    markerPart.Anchored = true
-    markerPart.CanCollide = false
-    markerPart.BrickColor = BrickColor.new("Bright red")
-    markerPart.Material = Enum.Material.Neon
-    markerPart.Transparency = 0.3
-    local decal = Instance.new("Decal")
-    decal.Texture = "rbxassetid://160501115" -- red circle
-    decal.Face = Enum.NormalId.Top
-    decal.Parent = markerPart
-    markerPart.Parent = Workspace
-    -- Fade in
-    markerPart.Transparency = 0.8
-    TweenService:Create(markerPart, TweenInfo.new(0.3), {Transparency = 0.3}):Play()
+    -- Anchor part (invisible) to hold highlight
+    local anchor = Instance.new("Part")
+    anchor.Size = Vector3.new(1, 1, 1)
+    anchor.Transparency = 1
+    anchor.Anchored = true
+    anchor.CanCollide = false
+    anchor.Position = pos
+    anchor.Name = "DesyncMarker"
+    anchor.Parent = Workspace
+    
+    -- Highlight outline of the player (stays with anchor)
+    local highlight = Instance.new("Highlight")
+    highlight.FillColor = Color3.fromRGB(255, 0, 0)
+    highlight.FillTransparency = 0.65
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+    highlight.OutlineTransparency = 0.1
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Parent = anchor
+    
+    -- Ground glow (neon ring)
+    local glow = Instance.new("Part")
+    glow.Size = Vector3.new(3, 0.2, 3)
+    glow.Shape = Enum.PartType.Cylinder
+    glow.BrickColor = BrickColor.new("Really red")
+    glow.Material = Enum.Material.Neon
+    glow.Transparency = 0.4
+    glow.Anchored = true
+    glow.CanCollide = false
+    glow.Position = pos - Vector3.new(0, 1, 0)
+    glow.Parent = anchor
+    
+    -- Fade in effect
+    highlight.FillTransparency = 1
+    glow.Transparency = 1
+    TweenService:Create(highlight, TweenInfo.new(0.3), {FillTransparency = 0.65}):Play()
+    TweenService:Create(glow, TweenInfo.new(0.3), {Transparency = 0.4}):Play()
+    
+    frozenMarker = anchor
 end
 
 local function removeMarker()
-    if markerPart then
-        TweenService:Create(markerPart, TweenInfo.new(0.2), {Transparency = 1}):Play()
+    if frozenMarker then
+        -- Fade out
+        for _, obj in pairs(frozenMarker:GetChildren()) do
+            if obj:IsA("Highlight") then
+                TweenService:Create(obj, TweenInfo.new(0.2), {FillTransparency = 1}):Play()
+            elseif obj:IsA("BasePart") then
+                TweenService:Create(obj, TweenInfo.new(0.2), {Transparency = 1}):Play()
+            end
+        end
         task.wait(0.2)
-        markerPart:Destroy()
-        markerPart = nil
+        frozenMarker:Destroy()
+        frozenMarker = nil
     end
 end
 
--- Improved desync core: prevents server from correcting
-local function startDesync()
-    if not plsraknet.desync then return end
-    plsraknet.desync(true)
-    -- Additional hardening: force platform stand and freeze root velocity
-    humanoid.PlatformStand = true
-    -- Spoof movement packets (send fake position every frame)
-    local frozenCFrame = root.CFrame
-    local heartbeat = RunService.Heartbeat:Connect(function()
-        if not Toggled then return end
-        root.CFrame = frozenCFrame
-        root.Velocity = Vector3.new(0,0,0)
-        root.RotVelocity = Vector3.new(0,0,0)
-        -- Optionally send a fake remote to keep connection alive
-    end)
-    heartbeatHook = heartbeat
-    -- Refresh desync every 2.5 seconds to avoid stale state
-    refreshLoop = task.spawn(function()
-        while Toggled do
-            task.wait(2.5)
+-- Extended desync: refresh ownership every few seconds
+local function startRefreshLoop()
+    if refreshTask then task.cancel(refreshTask) end
+    refreshTask = task.spawn(function()
+        while Toggled and plsraknet and plsraknet.desync do
+            task.wait(3)  -- refresh every 3 seconds
             plsraknet.desync(false)
             task.wait(0.05)
             plsraknet.desync(true)
@@ -127,25 +138,25 @@ local function startDesync()
     end)
 end
 
-local function stopDesync()
-    if heartbeatHook then heartbeatHook:Disconnect() heartbeatHook = nil end
-    if refreshLoop then task.cancel(refreshLoop) refreshLoop = nil end
-    if plsraknet.desync then plsraknet.desync(false) end
-    humanoid.PlatformStand = false
-end
-
--- UI toggle handler
 local function updateToggle(state)
     local knobPos = state and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
     local bgColor = state and Color3.fromRGB(80,80,80) or Color3.fromRGB(40,40,40)
+    
     TweenService:Create(Knob, TweenInfo.new(0.2), {Position = knobPos}):Play()
     TweenService:Create(ToggleButton, TweenInfo.new(0.2), {BackgroundColor3 = bgColor}):Play()
+    
     if state then
         createMarker()
-        startDesync()
+        if plsraknet and plsraknet.desync then
+            plsraknet.desync(true)
+            startRefreshLoop()
+        end
     else
         removeMarker()
-        stopDesync()
+        if plsraknet and plsraknet.desync then
+            plsraknet.desync(false)
+            if refreshTask then task.cancel(refreshTask) refreshTask = nil end
+        end
     end
 end
 
@@ -185,16 +196,4 @@ UIS.InputChanged:Connect(function(input)
     end
 end)
 
--- Cleanup on character respawn
-player.CharacterAdded:Connect(function(newChar)
-    character = newChar
-    root = character:WaitForChild("HumanoidRootPart")
-    humanoid = character:WaitForChild("Humanoid")
-    if Toggled then
-        Toggled = false
-        updateToggle(false)
-    end
-    if markerPart then markerPart:Destroy() end
-end)
-
-print("Desync with part marker loaded. Toggle to freeze server position (red part visual).")
+print("Desync UI loaded. Toggle to freeze server position + visualize outline.")
